@@ -1,0 +1,10 @@
+data: {"choices":[{"delta":{"content":"Rayleigh scattering","role":"assistant"},"finish_reason":null,"index":0}],"id":"chatcmpl-google","model":"gemini-3.5-flash","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" turns the sky \u003cblue\u003e \u0026 bright."},"finish_reason":null,"index":0}],"id":"chatcmpl-google","model":"gemini-3.5-flash","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}],"id":"chatcmpl-google","model":"gemini-3.5-flash","object":"chat.completion.chunk"}
+
+data: {"choices":[],"id":"chatcmpl-google","model":"gemini-3.5-flash","object":"chat.completion.chunk","usage":{"completion_tokens":38,"prompt_tokens":9,"total_tokens":47}}
+
+data: [DONE]
+

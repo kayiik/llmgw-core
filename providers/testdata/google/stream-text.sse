@@ -1,0 +1,6 @@
+data: {"candidates": [{"content": {"parts": [{"text": "Rayleigh scattering"}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 9,"totalTokenCount": 9,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 9}]},"modelVersion": "gemini-3.5-flash","responseId": "resp-text-fixture"}
+
+data: {"candidates": [{"content": {"parts": [{"text": " turns the sky <blue> & bright."}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 9,"totalTokenCount": 9,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 9}]},"modelVersion": "gemini-3.5-flash","responseId": "resp-text-fixture"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "","thoughtSignature": "c2lnbmF0dXJlLXRleHQtZml4dHVyZQ=="}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 9,"candidatesTokenCount": 8,"totalTokenCount": 47,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 9}],"thoughtsTokenCount": 30},"modelVersion": "gemini-3.5-flash","responseId": "resp-text-fixture"}
+

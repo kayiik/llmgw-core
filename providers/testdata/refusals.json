@@ -1,0 +1,93 @@
+[
+  {
+    "name": "OpenAI's exhausted quota",
+    "entry": "openai",
+    "status": 429,
+    "body": {"error": {"message": "You exceeded your current quota, please check your plan and billing details.", "type": "insufficient_quota", "param": null, "code": "insufficient_quota"}},
+    "class": "billing"
+  },
+  {
+    "name": "DeepSeek's insufficient balance",
+    "entry": "deepseek",
+    "status": 402,
+    "body": {"error": {"message": "Insufficient Balance", "type": "unknown_error", "param": null, "code": "invalid_request_error"}},
+    "class": "billing"
+  },
+  {
+    "name": "Anthropic's low credit balance",
+    "entry": "anthropic",
+    "status": 400,
+    "body": {"type": "error", "error": {"type": "invalid_request_error", "message": "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}},
+    "class": "billing"
+  },
+  {
+    "name": "Google's depleted prepayment",
+    "entry": "ai_studio",
+    "status": 429,
+    "body": {"error": {"code": 429, "message": "Your prepayment credits are depleted. Please go to AI Studio to manage your project and billing.", "status": "RESOURCE_EXHAUSTED"}},
+    "class": "billing"
+  },
+  {
+    "name": "OpenAI's context length",
+    "entry": "openai",
+    "status": 400,
+    "body": {"error": {"message": "This model's maximum context length is 128000 tokens. However, your messages resulted in 130211 tokens. Please reduce the length of the messages.", "type": "invalid_request_error", "param": "messages", "code": "context_length_exceeded"}},
+    "class": "context_overflow"
+  },
+  {
+    "name": "Azure OpenAI's context length",
+    "entry": "azure_openai",
+    "status": 400,
+    "body": {"error": {"message": "This model's maximum context length is 128000 tokens. However, your messages resulted in 130211 tokens.", "type": "invalid_request_error", "param": "messages", "code": "context_length_exceeded"}},
+    "class": "context_overflow"
+  },
+  {
+    "name": "Anthropic's long prompt",
+    "entry": "anthropic",
+    "status": 400,
+    "body": {"type": "error", "error": {"type": "invalid_request_error", "message": "prompt is too long: 210831 tokens > 200000 maximum"}},
+    "class": "context_overflow"
+  },
+  {
+    "name": "Google's input token count",
+    "entry": "ai_studio",
+    "status": 400,
+    "body": {"error": {"code": 400, "message": "The input token count (1048577) exceeds the maximum number of tokens allowed (1048576).", "status": "INVALID_ARGUMENT"}},
+    "class": "context_overflow"
+  },
+  {
+    "name": "Ollama's model without tools",
+    "entry": "ollama",
+    "status": 400,
+    "body": {"error": "registry.ollama.ai/library/gemma3:4b does not support tools"},
+    "class": "tools_unsupported"
+  },
+  {
+    "name": "OpenAI's model without images",
+    "entry": "openai",
+    "status": 400,
+    "body": {"error": {"message": "Invalid content type. image_url is only supported by certain models.", "type": "invalid_request_error", "param": "messages.[0].content.[1].type", "code": null}},
+    "class": "media_unsupported"
+  },
+  {
+    "name": "a rate limit",
+    "entry": "openai",
+    "status": 429,
+    "body": {"error": {"message": "Rate limit reached for requests per min. Please try again in 20s.", "type": "requests", "param": null, "code": "rate_limit_exceeded"}},
+    "class": "rate_limited"
+  },
+  {
+    "name": "a server error that quotes the context length",
+    "entry": "openai",
+    "status": 500,
+    "body": {"error": {"message": "The server failed while checking the context length.", "type": "server_error"}},
+    "class": "upstream"
+  },
+  {
+    "name": "another bad request",
+    "entry": "openai",
+    "status": 400,
+    "body": {"error": {"message": "Invalid value for temperature.", "type": "invalid_request_error", "param": "temperature", "code": null}},
+    "class": "upstream"
+  }
+]

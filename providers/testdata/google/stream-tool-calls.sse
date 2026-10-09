@@ -1,0 +1,4 @@
+data: {"candidates": [{"content": {"parts": [{"text": "Checking both cities."}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 61,"totalTokenCount": 61,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 61}]},"modelVersion": "gemini-3.5-flash","responseId": "resp-tools-fixture"}
+
+data: {"candidates": [{"content": {"parts": [{"functionCall": {"name": "get_weather","args": {"city": "Paris","unit": "celsius"}},"thoughtSignature": "c2lnbmF0dXJlLWNhbGwtZml4dHVyZQ=="},{"functionCall": {"name": "get_weather","args": {"city": "Rome","unit": "celsius"}}}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 61,"candidatesTokenCount": 40,"totalTokenCount": 149,"promptTokensDetails": [{"modality": "TEXT","tokenCount": 61}],"thoughtsTokenCount": 48},"modelVersion": "gemini-3.5-flash","responseId": "resp-tools-fixture"}
+
