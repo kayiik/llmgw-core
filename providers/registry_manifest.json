@@ -1305,11 +1305,8 @@
     "connection_scope": "system_or_personal",
     "default_provider_id": "edge_tts",
     "supports_model_discovery": true,
-    "onboarding_fields": [
-      "base_url"
-    ],
     "risk_level": "yellow",
-    "risk_notice": "Uses the public Microsoft Edge read-aloud service with a well-known shared access token. The endpoint and token are unofficial and may change; both can be overridden in this provider's configuration (base_url, api_key) without rebuilding the gateway.",
+    "risk_notice": "Uses the public Microsoft Edge read-aloud service with a well-known shared access token. The endpoint and token are unofficial and may change.",
     "docs_url": "https://learn.microsoft.com/en-us/microsoft-edge/"
   },
   {
