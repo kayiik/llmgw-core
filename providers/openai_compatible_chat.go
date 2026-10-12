@@ -30,11 +30,12 @@ func openAIChatForwarded(field string) bool {
 }
 
 // openAIChatFacadeField reports a Chat field the gateway's Chat facade
-// hands its transport. Only these reach its Responses conversion.
+// hands its transport. Only these reach its Responses conversion, which
+// carries response_format as text.format.
 func openAIChatFacadeField(field string) bool {
 	switch field {
 	case "temperature", "top_p", "max_tokens", "max_completion_tokens", "stop", "tools", "tool_choice",
-		"metadata", "reasoning_effort":
+		"metadata", "reasoning_effort", "response_format":
 		return true
 	}
 	return false

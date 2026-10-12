@@ -558,6 +558,7 @@ return translation.Adapter{Provider: provider}, nil // Messages over Chat
   set. Responses is forwarded as sent, with the request's model and
   stream flag. `ForceAPISupport`, or a request's `force_api_support`,
   serves Chat over Responses for a model whose row lists only Responses,
+  carrying `response_format` as `text.format`,
   retrying a 400 that names `temperature` or `top_p` once without it,
   and sends `max_tokens` to a reasoning model as `max_completion_tokens`.
 - **Catalog.** `/models` rows keep their vendor, display name and
