@@ -162,6 +162,31 @@ func TestOpenAICompatibleAdaptsChatToResponsesUnderTheLossPolicy(t *testing.T) {
 	}
 }
 
+// Chat that asks for a JSON schema is served over Responses with the same
+// schema as its text.format, so a model that lists only Responses answers
+// in the structure the request asks for.
+func TestOpenAICompatibleAdaptsResponseFormatToTextFormat(t *testing.T) {
+	t.Parallel()
+	backend, server := newOpenAIBackend(t, answerOpenAIResponses)
+	provider := newTestOpenAICompatible(t, server, func(config *OpenAICompatibleConfig) {
+		config.Models, config.ForceAPISupport, config.ForwardAllFields = openAIResponsesOnly, true, true
+	})
+	body := `{"messages":[{"role":"user","content":"verdict?"}],` +
+		`"response_format":{"type":"json_schema","json_schema":{"name":"verdict","schema":{"type":"object"},"strict":true}}}`
+	response, err := provider.Invoke(context.Background(), openAIRequest(core.ModelSurfaceChatCompletions, "responses-fixture", body, nil))
+	if err != nil || !strings.Contains(string(response.Body), `"object":"chat.completion"`) {
+		t.Fatalf("response = %s, err = %v", response.Body, err)
+	}
+	if got, want := lossPathsOf(response.Losses), []string{"advisory renamed response_format"}; !slices.Equal(got, want) {
+		t.Fatalf("losses = %v, want %v", got, want)
+	}
+	want := `{"input":[{"content":"verdict?","role":"user"}],"model":"responses-fixture",` +
+		`"text":{"format":{"name":"verdict","schema":{"type":"object"},"strict":true,"type":"json_schema"}}}`
+	if calls := backend.take(); len(calls) != 1 || calls[0].path != "/v1/responses" || calls[0].body != want {
+		t.Fatalf("upstream = %+v\nwant %s", calls, want)
+	}
+}
+
 // A 400 naming a sampling parameter is sent once more without it, with the
 // same headers, as the gateway retries Chat it serves over Responses.
 func TestOpenAICompatibleRetriesAResponsesRefusalWithoutTheNamedParameter(t *testing.T) {
