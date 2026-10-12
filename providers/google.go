@@ -90,15 +90,15 @@ type GoogleConfig struct {
 //
 // Chat Completions and embeddings are its surfaces. Google converts a Chat
 // request to Gemini contents itself: the text of the messages, max_tokens
-// and temperature, with the gateway's mapping, and function tools,
-// tool_choice, an assistant's tool calls and tool results, as
-// googleChatContents describes. Every other field is dropped and reported
-// in Response.Losses, a material loss when it changes the answer. A Chat
-// stream is Gemini's streamGenerateContent as Chat chunks, as googleStream
-// renders them; embeddings do not stream. A translation.Adapter in front
-// serves Messages and Responses over Chat, and Messages streams too.
-// GenerateImages implements core.ImageGenerator. Video generation is not
-// served yet.
+// and temperature, with the gateway's mapping, function tools, tool_choice,
+// an assistant's tool calls and tool results, as googleChatContents
+// describes, and response_format as Gemini's structured output. Every other
+// field is dropped and reported in Response.Losses, a material loss when it
+// changes the answer. A Chat stream is Gemini's streamGenerateContent as
+// Chat chunks, as googleStream renders them; embeddings do not stream. A
+// translation.Adapter in front serves Messages and Responses over Chat, and
+// Messages streams too. GenerateImages implements core.ImageGenerator.
+// Video generation is not served yet.
 //
 // Each operation authenticates with the credential it is given: an API key
 // travels in x-goog-api-key and never in a URL, and a token is the bearer.

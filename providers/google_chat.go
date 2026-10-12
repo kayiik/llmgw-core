@@ -118,7 +118,8 @@ type googleChatCall struct {
 // temperature are mapped as the gateway maps them. Function tools become
 // function declarations and tool_choice the function calling config, an
 // assistant's tool calls become functionCall parts and tool results
-// functionResponse parts; see googleChatContents. Every other field is
+// functionResponse parts; see googleChatContents. response_format asks for
+// Gemini's structured output; see googleResponseFormat. Every other field is
 // dropped and reported at its path: a field that changes the structure of
 // the answer unless it asks for what Google does anyway as a material loss,
 // and the rest as advisory ones. A stream honours stream_options'
@@ -136,7 +137,8 @@ func googleChatPayload(request core.Request, stream bool) (googleChatCall, error
 	if err != nil {
 		return googleChatCall{}, err
 	}
-	payload := googleGenerateRequest(contents, system, body["max_tokens"], body["temperature"], nil)
+	format, formatLosses := googleResponseFormat(body["response_format"])
+	payload := googleGenerateRequest(contents, system, body["max_tokens"], body["temperature"], nil, format)
 	declarations, toolLosses := googleFunctionDeclarations(body["tools"])
 	if len(declarations) > 0 {
 		payload["tools"] = []map[string]any{{"functionDeclarations": declarations}}
@@ -145,7 +147,7 @@ func googleChatPayload(request core.Request, stream bool) (googleChatCall, error
 	if config != nil {
 		payload["toolConfig"] = map[string]any{"functionCallingConfig": config}
 	}
-	losses := slices.Concat(googleChatFieldLosses(body, stream), googleChatMessageLosses(messages), contentLosses, toolLosses, choiceLosses)
+	losses := slices.Concat(googleChatFieldLosses(body, stream), googleChatMessageLosses(messages), contentLosses, toolLosses, choiceLosses, formatLosses)
 	options, _ := body["stream_options"].(map[string]any)
 	usage, _ := options["include_usage"].(bool)
 	return googleChatCall{payload: payload, losses: translate.NewReport(losses...).Losses, includeUsage: stream && usage}, nil
@@ -173,15 +175,16 @@ func googleChatMessages(value any) ([]map[string]any, error) {
 }
 
 // googleChatFieldLosses reports the Chat fields Google drops, in order, so
-// the losses do not depend on map order. Tools and tool_choice are mapped,
-// and googleFunctionDeclarations and googleFunctionCallingConfig report
-// what of them is not.
+// the losses do not depend on map order. Tools, tool_choice and
+// response_format are mapped, and googleFunctionDeclarations,
+// googleFunctionCallingConfig and googleResponseFormat report what of them
+// is not.
 func googleChatFieldLosses(body map[string]any, stream bool) []core.Loss {
 	var losses []core.Loss
 	for _, field := range slices.Sorted(maps.Keys(body)) {
 		value := body[field]
 		switch field {
-		case "model", "stream", "messages", "max_tokens", "temperature", "tools", "tool_choice":
+		case "model", "stream", "messages", "max_tokens", "temperature", "tools", "tool_choice", "response_format":
 			// The request's model and the operation decide the first two,
 			// and Google maps the rest.
 			continue
@@ -576,17 +579,77 @@ func googleFunctionCallingConfig(value any, declarations []map[string]any) (map[
 	return config, nil
 }
 
+// googleResponseFormat maps response_format to the generationConfig members
+// that ask Gemini for structured output: json_object asks for JSON, and
+// json_schema for JSON that follows its schema, sent whole as
+// responseJsonSchema, as a function's parameters are, rather than converted
+// to the OpenAPI subset responseSchema takes. A text format asks for what
+// Gemini answers with anyway. Gemini has no place for a schema's name or
+// description and no strict mode, and the answer's structure needs none of
+// them, so each is an advisory loss. Any other format cannot be sent: one
+// that is not an object, of another type, a json_schema format without a
+// JSON Schema object, or one with a member Chat does not define, as
+// llm-translate reads a format. Its loss is material, so that a product
+// refuses the target rather than answer without the structure asked for.
+func googleResponseFormat(value any) (map[string]any, []core.Loss) {
+	lost := func(detail string) []core.Loss {
+		return []core.Loss{{Path: "response_format", Class: translate.LossDropped, Severity: translate.LossMaterial, Detail: detail}}
+	}
+	format, isObject := value.(map[string]any)
+	members, _ := format["json_schema"].(map[string]any)
+	schema, isSchema := members["schema"].(map[string]any)
+	switch {
+	case value == nil:
+		return nil, nil
+	case !isObject:
+		return nil, lost("the response format is not an object, so Google cannot send it")
+	case format["type"] == "text" && googleOnlyMembers(format, "type"):
+		return nil, nil
+	case format["type"] == "json_object" && googleOnlyMembers(format, "type"):
+		return map[string]any{"responseMimeType": "application/json"}, nil
+	case format["type"] != "json_schema" || !googleOnlyMembers(format, "type", "json_schema") ||
+		!googleOnlyMembers(members, "name", "description", "schema", "strict"):
+		return nil, lost("Google cannot send this response format")
+	case !isSchema:
+		return nil, lost("the response format holds no JSON Schema object, so Google cannot send it")
+	}
+	var losses []core.Loss
+	for _, name := range []string{"name", "description"} {
+		if held := members[name]; held != nil && held != "" {
+			losses = append(losses, core.Loss{Path: "response_format.json_schema." + name, Class: translate.LossDropped, Severity: translate.LossAdvisory,
+				Detail: "Google does not send this response format field"})
+		}
+	}
+	if strict, _ := members["strict"].(bool); strict {
+		losses = append(losses, core.Loss{Path: "response_format.json_schema.strict", Class: translate.LossDropped, Severity: translate.LossAdvisory,
+			Detail: "Google does not guarantee that the answer matches the schema exactly"})
+	}
+	return map[string]any{"responseMimeType": "application/json", "responseJsonSchema": schema}, losses
+}
+
+// googleOnlyMembers reports an object whose members are all among allowed,
+// a null member counting as unset, as llm-translate reads a format.
+func googleOnlyMembers(object map[string]any, allowed ...string) bool {
+	for key, member := range object {
+		if member != nil && !slices.Contains(allowed, key) {
+			return false
+		}
+	}
+	return true
+}
+
 // googleContentRequest maps text messages to a generateContent body, as
 // googleChatContents maps them, with maxTokens, temperature and the
 // response modalities.
 func googleContentRequest(messages []map[string]any, maxTokens, temperature any, modalities []string) map[string]any {
 	contents, system, _, _ := googleChatContents(messages)
-	return googleGenerateRequest(contents, system, maxTokens, temperature, modalities)
+	return googleGenerateRequest(contents, system, maxTokens, temperature, modalities, nil)
 }
 
 // googleGenerateRequest assembles a generateContent body. maxTokens and
-// temperature pass through as the request holds them.
-func googleGenerateRequest(contents, system []map[string]any, maxTokens, temperature any, modalities []string) map[string]any {
+// temperature pass through as the request holds them, and format adds the
+// members googleResponseFormat maps a response format to.
+func googleGenerateRequest(contents, system []map[string]any, maxTokens, temperature any, modalities []string, format map[string]any) map[string]any {
 	request := map[string]any{"contents": contents}
 	if len(system) > 0 {
 		request["systemInstruction"] = map[string]any{"parts": system}
@@ -601,6 +664,7 @@ func googleGenerateRequest(contents, system []map[string]any, maxTokens, tempera
 	if len(modalities) > 0 {
 		generation["responseModalities"] = modalities
 	}
+	maps.Copy(generation, format)
 	if len(generation) > 0 {
 		request["generationConfig"] = generation
 	}

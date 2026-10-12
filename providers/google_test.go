@@ -155,9 +155,9 @@ func TestGoogleChatTranslatesGeminiShape(t *testing.T) {
 }
 
 // The gateway maps a message's role and string content, and Google maps
-// function tools and their calls too, so Google reports everything else it
-// drops. The body keeps the gateway's bytes, HTML escaping and float64
-// numbers included.
+// function tools, their calls and the response format too, so Google
+// reports everything else it drops. The body keeps the gateway's bytes,
+// HTML escaping and float64 numbers included.
 func TestGoogleChatReportsWhatItDrops(t *testing.T) {
 	t.Parallel()
 	fake, base := newGoogleFake(t, googleAnswer(http.StatusOK, googleHelloAnswer))
@@ -171,7 +171,7 @@ func TestGoogleChatReportsWhatItDrops(t *testing.T) {
 	}
 	calls := fake.take()
 	want := `{"contents":[{"parts":[{"text":""}],"role":"user"},{"parts":[{"text":""}],"role":"user"},{"parts":[{"text":""}],"role":"model"},` +
-		`{"parts":[{"text":"u"}],"role":"user"}],"generationConfig":{"maxOutputTokens":1000,"temperature":0.7},` +
+		`{"parts":[{"text":"u"}],"role":"user"}],"generationConfig":{"maxOutputTokens":1000,"responseMimeType":"application/json","temperature":0.7},` +
 		`"systemInstruction":{"parts":[{"text":"\u003cdev\u003e \u0026 co"}]}}`
 	if len(calls) != 1 || calls[0].body != want {
 		t.Fatalf("upstream = %+v", calls)
@@ -187,7 +187,6 @@ func TestGoogleChatReportsWhatItDrops(t *testing.T) {
 		dropped("messages.5.name", translate.LossAdvisory, "Google does not send this message field"),
 		dropped("messages.5.tool_call_id", translate.LossMaterial, "Google does not send this message field"),
 		dropped("n", translate.LossAdvisory, "Google already behaves as this value asks"),
-		dropped("response_format", translate.LossMaterial, "Google does not send this Chat field"),
 		dropped("tools.0", translate.LossMaterial, "Google sends only function tools with a name, so the model cannot call this one"),
 	}
 	if !reflect.DeepEqual(response.Losses, losses) {

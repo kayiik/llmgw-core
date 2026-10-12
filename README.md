@@ -709,12 +709,13 @@ Providers: func(s Settings, instance string) (core.Provider, error) {
 - **Surfaces.** Chat Completions and embeddings, for every model. Chat is
   converted to Gemini `contents` with the gateway's mapping: each message's
   string content, system and developer text as `systemInstruction`,
-  `max_tokens` and `temperature`. Every other field is dropped and reported
-  as a loss, a material one for content that is not text and for fields
-  that change the answer's structure. Embeddings embed each input with one
-  call, and refuse `dimensions` and encodings other than float, as the
-  gateway does. `GenerateImages` implements `core.ImageGenerator`. Video
-  generation is not served yet.
+  `max_tokens` and `temperature`. Tools and `response_format` map as below.
+  Every other field is dropped and reported as a loss, a material one for
+  content that is not text and for fields that change the answer's
+  structure. Embeddings embed each input with one call, and refuse
+  `dimensions` and encodings other than float, as the gateway does.
+  `GenerateImages` implements `core.ImageGenerator`. Video generation is not
+  served yet.
 - **Tools.** Function tools become Gemini function declarations, their
   `parameters` sent whole as `parametersJsonSchema`; `strict` is dropped as
   an advisory loss, since Google does not enforce the schema. `tool_choice`
@@ -734,6 +735,18 @@ Providers: func(s Settings, instance string) (core.Provider, error) {
   itself. Gemini 3 refuses a turn's function calls without one, so a turn
   whose calls carry none is sent with the skip signature Google documents
   for such history, which Google warns costs some answer quality.
+- **Structured output.** `response_format` becomes Gemini's structured
+  output: `json_object` sets `responseMimeType` to `application/json`, and
+  `json_schema` sets it too, with its `schema` sent whole as
+  `responseJsonSchema` rather than converted to the OpenAPI subset of
+  `responseSchema`. A `text` format asks for nothing, so nothing is sent or
+  reported. Gemini has no place for the schema's `name` or `description`
+  and no strict mode, so a `name`, a `description` and `strict: true` are
+  dropped as advisory losses. Any other format is dropped as a material
+  loss, since the answer would lack the structure it asks for: one that is
+  not an object, another type, a `json_schema` without a JSON Schema
+  object, or one with a member Chat does not define. The JSON arrives as
+  the answer's text.
 - **Finish reasons** follow Gemini's: `MAX_TOKENS` is `length`, a safety or
   policy stop is `content_filter`, and every other reason is `stop`.
 - **Streaming.** A Chat stream is sent to `streamGenerateContent` with
