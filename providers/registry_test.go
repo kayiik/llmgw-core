@@ -102,6 +102,14 @@ func TestDefaultManifestContracts(t *testing.T) {
 	if !ok || !claude.ClientOnly || claude.Availability != providers.ProviderClientOnly || claude.ConnectionScope != providers.ConnectionScopeGatewayClient {
 		t.Fatalf("claude_code=%+v", claude)
 	}
+	// An extension daemon serves Edge TTS, always at Microsoft's fixed
+	// endpoint, and core reads no base URL for it, so the entry asks for none
+	// and its notice promises no override.
+	edge, ok := providers.RegistryProviderByID("edge_tts")
+	if notice := strings.ToLower(edge.RiskNotice); !ok || edge.DefaultBaseURL != "" || edge.RequiresBaseURL || slices.Contains(edge.OnboardingFields, "base_url") ||
+		notice == "" || strings.Contains(notice, "overrid") || strings.Contains(notice, "base_url") {
+		t.Fatalf("edge_tts=%+v", edge)
+	}
 }
 
 func TestLookupResolvesAliasesAndReturnsCopies(t *testing.T) {
