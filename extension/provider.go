@@ -14,6 +14,10 @@ import (
 type Provider struct {
 	client *Client
 	info   ProviderInfo
+	// modelLookup reads a caller/instance-scoped local catalog snapshot only.
+	// It is used by the optional prepared path, not legacy Invoke/Stream.
+	modelLookup             func(string) (core.ModelInfo, bool)
+	requireModelDeclaration bool
 }
 
 var _ core.Provider = (*Provider)(nil)
@@ -24,6 +28,18 @@ func NewProvider(client *Client, info ProviderInfo) *Provider {
 	info.Surfaces = slices.Clone(info.Surfaces)
 	info.OAuthMethods = slices.Clone(info.OAuthMethods)
 	return &Provider{client: client, info: info}
+}
+
+// NewProviderWithModelLookup adds a local model declaration lookup for prepared
+// calls. SupportedAPIs/explicit surface capabilities supply the native model
+// contract; nil/missing/undeclared rows remain unknown rather than inheriting
+// a facade's static defaults. Lookup must not discover models or do I/O.
+// Legacy NativeSurfaces, Invoke, Stream and ListModels retain their behavior.
+func NewProviderWithModelLookup(client *Client, info ProviderInfo, lookup func(string) (core.ModelInfo, bool)) *Provider {
+	p := NewProvider(client, info)
+	p.modelLookup = lookup
+	p.requireModelDeclaration = true
+	return p
 }
 
 // Info returns what the provider was created from.

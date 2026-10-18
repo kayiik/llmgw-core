@@ -208,7 +208,7 @@ func TestRuntimeServesTheGoogleVertical(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(response.Body) != googleChatCompletion || len(response.Losses) != 1 || response.Losses[0].Path != "top_p" ||
+		if completionGolden(t, string(response.Body), "google") != googleChatCompletion || len(response.Losses) != 1 || response.Losses[0].Path != "top_p" ||
 			response.Losses[0].Severity != translate.LossAdvisory {
 			t.Fatalf("response = %s, losses = %+v", response.Body, response.Losses)
 		}
@@ -233,12 +233,32 @@ func TestRuntimeServesTheGoogleVertical(t *testing.T) {
 		expect(t, googleRuntimeCall{method: http.MethodPost, uri: "/v1beta/models/gemini-fixture:generateContent", authorization: studioKey, body: googleUpstreamChat})
 	})
 
+	t.Run("material request loss precedes Vertex token exchange", func(t *testing.T) {
+		request := chat
+		request.Body = []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":false}]}]}`)
+		response, invokeErr := runtime.Invoke(ctx, system, "vertex", request)
+		iter, streamErr := runtime.Stream(ctx, system, "vertex", request)
+		if iter != nil {
+			_ = iter.Close()
+		}
+		for _, err := range []error{invokeErr, streamErr} {
+			var refusal *core.LossPolicyError
+			if !errors.As(err, &refusal) {
+				t.Fatalf("error=%v, want loss refusal", err)
+			}
+		}
+		if len(response.Losses) != 1 || response.Losses[0].Path != "messages.0.content.0" {
+			t.Fatalf("losses=%v", response.Losses)
+		}
+		expect(t)
+	})
+
 	t.Run("chat on Vertex AI with a service account", func(t *testing.T) {
 		response, err := runtime.Invoke(ctx, system, "vertex", chat)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(response.Body) != googleChatCompletion {
+		if completionGolden(t, string(response.Body), "google") != googleChatCompletion {
 			t.Fatalf("response = %s", response.Body)
 		}
 		// The project comes from the key, and the key is exchanged once.
@@ -301,6 +321,7 @@ func TestRuntimeServesTheGoogleVertical(t *testing.T) {
 		stream := chat
 		stream.Body = []byte(`{"model":"gemini-fixture","stream":true,"stream_options":{"include_usage":true},"messages":[{"role":"user","content":"Say hello"}]}`)
 		frames := drainGoogle(t, runtime, owner, stream)
+		frames = completionGolden(t, frames, "google")
 		chunk := func(delta, finish string) string {
 			return `data: {"choices":[{"delta":` + delta + `,"finish_reason":` + finish + `,"index":0}],"id":"chatcmpl-google","model":"gemini-fixture-001","object":"chat.completion.chunk"}` + "\n\n"
 		}

@@ -176,6 +176,7 @@ func (r *Runtime[S]) Health(instance string) core.ProviderHealthEvidence {
 type binding struct {
 	provider    core.Provider
 	coordinator *tokenstore.Coordinator
+	generation  uint64
 }
 
 func (r *Runtime[S]) bind(instance string) (binding, error) {
@@ -203,7 +204,7 @@ func (r *Runtime[S]) bind(instance string) (binding, error) {
 		r.providers[instance] = provider
 	}
 	if r.options.Credentials == nil {
-		return binding{provider: provider}, nil
+		return binding{provider: provider, generation: generation}, nil
 	}
 	coordinator, ok := r.coordinators[instance]
 	if !ok {
@@ -223,7 +224,7 @@ func (r *Runtime[S]) bind(instance string) (binding, error) {
 		}
 		r.coordinators[instance] = coordinator
 	}
-	return binding{provider: provider, coordinator: coordinator}, nil
+	return binding{provider: provider, coordinator: coordinator, generation: generation}, nil
 }
 
 // credential is the credential one operation uses, and the record it came

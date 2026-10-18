@@ -6,7 +6,7 @@ import (
 )
 
 // ollamaCompletion converts an /api/chat answer to a Chat completion as the
-// gateway does. The completion's ID is always chatcmpl-ollama, and its usage
+// gateway does. The completion's ID is unique to the operation, and its usage
 // comes from Ollama's evaluation counts. An answer that is not a chat reply,
 // or one with neither content nor tool calls, cannot be used.
 func ollamaCompletion(model string, raw []byte) ([]byte, error) {
@@ -29,7 +29,7 @@ func ollamaCompletion(model string, raw []byte) ([]byte, error) {
 	}
 	prompt, completion := codexChatInt(data["prompt_eval_count"]), codexChatInt(data["eval_count"])
 	body, err := json.Marshal(map[string]any{
-		"id": "chatcmpl-ollama", "object": "chat.completion", "model": model,
+		"id": newChatCompletionID("ollama"), "object": "chat.completion", "model": model,
 		"choices": []any{map[string]any{"index": 0, "message": reply, "finish_reason": finish}},
 		"usage":   map[string]any{"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion},
 	})

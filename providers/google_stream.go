@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
 
+	translate "github.com/kayiik/llm-translate"
 	core "github.com/kayiik/llmgw-core"
 )
 
@@ -17,6 +19,9 @@ import (
 func (p *Google) streamChat(ctx context.Context, request core.Request) (core.StreamIter, error) {
 	call, err := googleChatPayload(request, true)
 	if err != nil {
+		return nil, err
+	}
+	if err := (core.LossPolicy{}).Check(call.losses); err != nil {
 		return nil, err
 	}
 	access, err := p.access(request.Credential)
@@ -38,6 +43,7 @@ func (p *Google) streamChat(ctx context.Context, request core.Request) (core.Str
 	return &googleStream{
 		ctx: ctx, provider: p, model: request.Model, body: response.Body, reader: newSSERecordReader(response.Body),
 		includeUsage: call.includeUsage, losses: call.losses,
+		completionID: newChatCompletionID("google"),
 	}, nil
 }
 
@@ -63,9 +69,18 @@ type googleStream struct {
 	includeUsage bool
 	losses       []core.Loss
 	// frames are the frames ready to return.
-	frames     [][]byte
-	modelKnown bool
-	responseID string
+	frames                    [][]byte
+	modelKnown                bool
+	responseID                string
+	completionID              string
+	exactNumbers              bool
+	responseAssessment        func(map[string]any) core.CallAssessment
+	sourceRecord              *core.SourceUsageRecorder
+	sourceUsage               *preparedNativeUsage
+	sourceMu                  sync.Mutex
+	sourceComplete, sourceEOF bool
+	sourceTruncated           bool
+	sourceFailed              bool
 	// calls counts the tool calls sent, which number the next ones.
 	calls int
 	// output reports a delta was sent, finish the reason Google gave, if
@@ -92,13 +107,56 @@ func (s *googleStream) Next() ([]byte, error) {
 			return nil, io.EOF
 		}
 		s.failure = s.advance()
+		if s.failure != nil || s.ended {
+			s.finishSource(s.failure, false)
+		}
 	}
 	frame := s.frames[0]
 	s.frames = s.frames[1:]
 	return frame, nil
 }
 
-func (s *googleStream) Close() error { return s.body.Close() }
+func (s *googleStream) Close() error { err := s.body.Close(); s.finishSource(err, true); return err }
+
+func (s *googleStream) finishSource(err error, closing bool) {
+	if s.sourceRecord == nil {
+		return
+	}
+	quality := translate.CompletionPartial
+	cancelled := s.ctx.Err() != nil
+	s.sourceMu.Lock()
+	complete, eof, truncated, failed := s.sourceComplete, s.sourceEOF, s.sourceTruncated, s.sourceFailed
+	s.sourceMu.Unlock()
+	if failed {
+		quality = translate.CompletionFailed
+		cancelled = false
+	} else if complete {
+		quality = translate.CompletionComplete
+		cancelled = false
+		if truncated {
+			quality = translate.CompletionTruncated
+		}
+	} else if eof {
+		quality = translate.CompletionTruncated
+	} else if err != nil && !cancelled {
+		quality = translate.CompletionFailed
+	} else if !closing && !cancelled {
+		quality = translate.CompletionPartial
+	}
+	s.sourceRecord.Finish(quality, cancelled)
+}
+func (s *googleStream) SourceUsage() (core.SourceUsageObservation, bool) {
+	if s.sourceRecord == nil {
+		return core.SourceUsageObservation{}, false
+	}
+	return s.sourceRecord.SourceUsage()
+}
+func (s *googleStream) SourceUsageHistory() core.SourceUsageHistory {
+	if s.sourceRecord == nil {
+		return core.SourceUsageHistory{}
+	}
+	return s.sourceRecord.SourceUsageHistory()
+}
 
 // Losses implements core.LossReporter.
 func (s *googleStream) Losses() []core.Loss { return s.losses }
@@ -108,17 +166,53 @@ func (s *googleStream) advance() error {
 	label := s.provider.label()
 	data, err := s.reader.NextData()
 	if err == io.EOF {
+		s.sourceMu.Lock()
+		s.sourceEOF = true
+		s.sourceMu.Unlock()
 		return s.end()
 	}
 	if err != nil {
 		return streamFailure(s.ctx, label, err)
 	}
 	var event map[string]any
-	if json.Unmarshal([]byte(data), &event) != nil || event == nil {
+	var decodeErr error
+	if s.exactNumbers {
+		event, decodeErr = preparedJSON(core.Request{Body: []byte(data), ContentType: core.ContentTypeJSON})
+	} else {
+		decodeErr = json.Unmarshal([]byte(data), &event)
+	}
+	if decodeErr != nil || event == nil {
+		s.sourceMu.Lock()
+		s.sourceFailed = true
+		s.sourceMu.Unlock()
 		return unusableResponse("the "+label+" stream sent an event that is not JSON", nil)
 	}
+	if s.sourceUsage != nil {
+		if usage, set := event["usageMetadata"]; set {
+			s.sourceUsage.merge(usage)
+		}
+		if reason := googleCandidateFinish(event); reason != "" {
+			s.sourceMu.Lock()
+			s.sourceComplete = true
+			s.sourceTruncated = reason == "MAX_TOKENS"
+			s.sourceMu.Unlock()
+		}
+	}
 	if envelope, ok := event["error"].(map[string]any); ok {
+		s.sourceMu.Lock()
+		s.sourceFailed = true
+		s.sourceMu.Unlock()
 		return s.refusal(envelope, data, event)
+	}
+	if s.responseAssessment != nil {
+		a := s.responseAssessment(event)
+		s.losses = append(s.losses, a.Losses...)
+		if err := (core.LossPolicy{}).Check(a.Losses); err != nil {
+			return err
+		}
+		if a.Feasibility != core.SupportSupported {
+			return &core.CallPlanError{Reason: "google_response_semantics_unassessed", Losses: a.Losses, UnknownPaths: a.UnknownPaths}
+		}
 	}
 	if version, _ := event["modelVersion"].(string); version != "" && !s.modelKnown {
 		s.model, s.modelKnown = version, true
@@ -175,7 +269,7 @@ func (s *googleStream) end() error {
 	if s.includeUsage {
 		input, output, total := googleUsage(map[string]any{"usageMetadata": s.usage})
 		s.frames = append(s.frames, googleFrame(map[string]any{
-			"id": "chatcmpl-google", "object": "chat.completion.chunk", "model": s.model, "choices": []any{},
+			"id": s.completionID, "object": "chat.completion.chunk", "model": s.model, "choices": []any{},
 			"usage": map[string]any{"prompt_tokens": input, "completion_tokens": output, "total_tokens": total},
 		}))
 	}
@@ -189,6 +283,11 @@ func (s *googleStream) end() error {
 // envelope without a status cannot be classified, so the stream is unusable.
 func (s *googleStream) refusal(envelope map[string]any, data string, event map[string]any) error {
 	code, _ := envelope["code"].(float64)
+	if number, ok := envelope["code"].(json.Number); ok {
+		if value, err := number.Int64(); err == nil {
+			code = float64(value)
+		}
+	}
 	status := int(code)
 	if status < http.StatusBadRequest || status > 599 || float64(status) != code {
 		return unusableResponse("the "+s.provider.label()+" stream reported an error", nil)
@@ -199,7 +298,7 @@ func (s *googleStream) refusal(envelope map[string]any, data string, event map[s
 // chunk renders one Chat chunk with a delta and a finish reason.
 func (s *googleStream) chunk(delta map[string]any, finish any) []byte {
 	return googleFrame(map[string]any{
-		"id": "chatcmpl-google", "object": "chat.completion.chunk", "model": s.model,
+		"id": s.completionID, "object": "chat.completion.chunk", "model": s.model,
 		"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}},
 	})
 }

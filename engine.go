@@ -568,9 +568,7 @@ func sseData(frame []byte) (string, bool) {
 			continue
 		}
 		value := strings.TrimPrefix(line, "data:")
-		if strings.HasPrefix(value, " ") {
-			value = value[1:]
-		}
+		value = strings.TrimPrefix(value, " ")
 		values = append(values, value)
 	}
 	return strings.Join(values, "\n"), len(values) > 0

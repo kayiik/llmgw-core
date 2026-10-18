@@ -18,14 +18,13 @@ import (
 	"github.com/kayiik/llmgw-core/translation"
 )
 
-// ollamaUpstreamChat is what the gateway sends Ollama for ollamaRuntimeChat:
-// the gateway's own functions produce it from the same Chat body.
+// Text parts retain their content through the runtime and provider mapper.
 const (
 	ollamaRuntimeChat = `{"model":"llama3.2","messages":[{"role":"developer","content":"Be brief."},` +
-		`{"role":"user","content":[{"type":"text","text":"Say hello"},{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgo="}}]}],` +
+		`{"role":"user","content":[{"type":"text","text":"Say hello"}]}],` +
 		`"max_tokens":64,"stop":["END"]}`
 	ollamaUpstreamChat = `{"messages":[{"content":"Be brief.","role":"system"},` +
-		`{"content":"[map[text:Say hello type:text] map[image_url:map[url:data:image/png;base64,iVBORw0KGgo=] type:image_url]]","role":"user"}],` +
+		`{"content":"Say hello","role":"user"}],` +
 		`"model":"llama3.2","options":{"num_predict":64},"stream":false}`
 	ollamaUpstreamStream = `{"messages":[{"content":"Say hello","role":"user"}],"model":"llama3.2","stream":true}`
 )
@@ -86,11 +85,11 @@ func TestRuntimeServesTheOllamaVertical(t *testing.T) {
 		return core.Request{Surface: core.ModelSurfaceChatCompletions, Model: "llama3.2", ContentType: core.ContentTypeJSON, Body: []byte(body)}
 	}
 
-	t.Run("chat drops the image as the gateway does and says so", func(t *testing.T) {
+	t.Run("chat preserves text parts and advisory reports", func(t *testing.T) {
 		response, err := runtime.Invoke(ctx, caller, "ollama", chat(ollamaRuntimeChat))
 		const want = `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hello from ollama","role":"assistant"}}],` +
 			`"id":"chatcmpl-ollama","model":"llama3.2","object":"chat.completion","usage":{"completion_tokens":4,"prompt_tokens":3,"total_tokens":7}}`
-		if err != nil || string(response.Body) != want {
+		if err != nil || completionGolden(t, string(response.Body), "ollama") != want {
 			t.Fatalf("response = %s, err = %v", response.Body, err)
 		}
 		if calls := backend.take(); !reflect.DeepEqual(calls, []ollamaCall{{path: "/api/chat", body: ollamaUpstreamChat}}) {
@@ -100,8 +99,29 @@ func TestRuntimeServesTheOllamaVertical(t *testing.T) {
 		for _, loss := range response.Losses {
 			paths = append(paths, string(loss.Severity)+" "+loss.Path)
 		}
-		if want := []string{"advisory messages.0.role", "material messages.1.content", "material messages.1.content.1", "advisory stop"}; !slices.Equal(paths, want) {
+		if want := []string{"advisory messages.0.role", "advisory stop"}; !slices.Equal(paths, want) {
 			t.Fatalf("losses = %v, want %v", paths, want)
+		}
+	})
+
+	t.Run("material content is refused before invoke or stream", func(t *testing.T) {
+		request := chat(`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:,"}}]}]}`)
+		response, invokeErr := runtime.Invoke(ctx, caller, "ollama", request)
+		stream, streamErr := runtime.Stream(ctx, caller, "ollama", request)
+		if stream != nil {
+			_ = stream.Close()
+		}
+		for _, err := range []error{invokeErr, streamErr} {
+			var failure *core.LossPolicyError
+			if !errors.As(err, &failure) {
+				t.Fatalf("error=%v", err)
+			}
+		}
+		if len(response.Losses) != 1 || response.Losses[0].Path != "messages.0.content.0" {
+			t.Fatalf("losses=%v", response.Losses)
+		}
+		if calls := backend.take(); len(calls) != 0 {
+			t.Fatalf("refused input sent: %v", calls)
 		}
 	})
 
@@ -125,7 +145,7 @@ func TestRuntimeServesTheOllamaVertical(t *testing.T) {
 		chunk := func(delta, finish string) string {
 			return `data: {"choices":[{"delta":` + delta + `,"finish_reason":` + finish + `,"index":0}],"id":"chatcmpl-ollama","model":"llama3.2","object":"chat.completion.chunk"}` + "\n\n"
 		}
-		if want := chunk(`{"content":"Hello"}`, "null") + chunk(`{"content":" there"}`, "null") + chunk(`{}`, `"stop"`) + "data: [DONE]\n\n"; frames.String() != want {
+		if want := chunk(`{"content":"Hello"}`, "null") + chunk(`{"content":" there"}`, "null") + chunk(`{}`, `"stop"`) + "data: [DONE]\n\n"; completionGolden(t, frames.String(), "ollama") != want {
 			t.Fatalf("frames = %q\nwant %q", frames.String(), want)
 		}
 		if calls := backend.take(); !reflect.DeepEqual(calls, []ollamaCall{{path: "/api/chat", body: ollamaUpstreamStream}}) {

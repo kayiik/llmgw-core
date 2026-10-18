@@ -321,6 +321,14 @@ func (p *AzureOpenAI) post(ctx context.Context, call azureCall) (*http.Response,
 	if err != nil {
 		return nil, &core.ProviderError{Message: "the Azure OpenAI request could not be encoded", Class: core.ProviderErrorInvalidRequest, Cause: err}
 	}
+	return p.postEncoded(ctx, call, body)
+}
+
+func (p *AzureOpenAI) postEncoded(ctx context.Context, call azureCall, body []byte) (*http.Response, error) {
+	return p.postEncodedObserved(ctx, call, body, nil)
+}
+
+func (p *AzureOpenAI) postEncodedObserved(ctx context.Context, call azureCall, body []byte, observe func([]byte)) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, core.NewConfigurationError("the Azure OpenAI base URL is not a usable request URL", err)
@@ -336,6 +344,9 @@ func (p *AzureOpenAI) post(ctx context.Context, call azureCall) (*http.Response,
 	if response.StatusCode >= http.StatusBadRequest {
 		defer response.Body.Close()
 		raw, _ := readInvocationResponseBody(ctx, response, azureLabel)
+		if observe != nil {
+			observe(raw)
+		}
 		return nil, httpStatusFailure(azureLabel, response, raw, p.now())
 	}
 	return response, nil

@@ -71,6 +71,9 @@ func TestOllamaStreamsChunksAsTheGatewayDoes(t *testing.T) {
 			t.Fatal(err)
 		}
 		frames, err := ollamaFrames(t, stream)
+		joined := completionGolden(t, strings.Join(frames, ""), "ollama")
+		frames = strings.SplitAfter(joined, "\n\n")
+		frames = frames[:len(frames)-1]
 		if err != nil || !slices.Equal(frames, tc.want) {
 			t.Fatalf("%s: frames = %q, err = %v\nwant %q", tc.name, frames, err, tc.want)
 		}

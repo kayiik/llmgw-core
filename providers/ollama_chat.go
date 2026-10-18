@@ -46,8 +46,12 @@ func ollamaPrepare(request core.Request, stream bool) (ollamaCall, error) {
 	if err != nil {
 		return ollamaCall{}, err
 	}
+	return ollamaPrepareBody(request.Model, stream, body, fields)
+}
+
+func ollamaPrepareBody(model string, stream bool, body ollamaChatBody, fields map[string]any) (ollamaCall, error) {
 	messages, losses := ollamaMessages(body.Messages)
-	payload := map[string]any{"model": request.Model, "messages": messages, "stream": stream}
+	payload := map[string]any{"model": model, "messages": messages, "stream": stream}
 	options := map[string]any{}
 	if body.Temperature != nil {
 		options["temperature"] = body.Temperature

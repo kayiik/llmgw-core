@@ -24,6 +24,9 @@ func (p *Google) chat(ctx context.Context, request core.Request) (core.Response,
 	if err != nil {
 		return core.Response{}, err
 	}
+	if err := (core.LossPolicy{}).Check(call.losses); err != nil {
+		return core.Response{Losses: call.losses}, err
+	}
 	access, err := p.access(request.Credential)
 	if err != nil {
 		return core.Response{}, err
@@ -129,6 +132,10 @@ func googleChatPayload(request core.Request, stream bool) (googleChatCall, error
 	if err != nil {
 		return googleChatCall{}, err
 	}
+	return googleChatPayloadBody(body, stream)
+}
+
+func googleChatPayloadBody(body map[string]any, stream bool) (googleChatCall, error) {
 	messages, err := googleChatMessages(body["messages"])
 	if err != nil {
 		return googleChatCall{}, err
@@ -242,10 +249,7 @@ func googleChatMessageLosses(messages []map[string]any) []core.Loss {
 			}
 			path := "messages." + strconv.Itoa(index) + "." + field
 			if field == "content" {
-				if _, text := value.(string); !text {
-					losses = append(losses, core.Loss{Path: path, Class: translate.LossDropped, Severity: translate.LossMaterial,
-						Detail: "Google receives only text content, so this content is sent as empty text"})
-				}
+				// googleChatContents validates and maps content, including parts.
 				continue
 			}
 			severity := translate.LossAdvisory
@@ -269,7 +273,7 @@ const googleSkipSignature = "skip_thought_signature_validator"
 // does for text: system and developer text becomes the system instruction,
 // since Gemini has no system role, an assistant is the model, and every
 // other message keeps its role, or is the user's when it has none, with its
-// string content as one text part.
+// string or ordered text-part content as one text part.
 //
 // An assistant's tool calls become functionCall parts after its text, each
 // with the arguments it holds as a JSON object and the thought signature it
@@ -293,8 +297,13 @@ func googleChatContents(messages []map[string]any) ([]map[string]any, []map[stri
 	var results map[string]any
 	for index, message := range messages {
 		role, _ := message["role"].(string)
-		text, _ := message["content"].(string)
 		path := "messages." + strconv.Itoa(index)
+		text := ""
+		if role != "tool" {
+			var textLosses []core.Loss
+			text, textLosses = chatText(path+".content", message["content"], "Google receives only text content")
+			losses = append(losses, textLosses...)
+		}
 		switch role {
 		case "system", "developer":
 			system = append(system, map[string]any{"text": text})
@@ -464,29 +473,7 @@ func googleFunctionResponse(path string, message map[string]any, names map[strin
 // or the text of its text parts. Any other part, or content of another
 // kind, is a material loss.
 func googleToolResultText(path string, content any) (string, []core.Loss) {
-	lost := func(path string) core.Loss {
-		return core.Loss{Path: path, Class: translate.LossDropped, Severity: translate.LossMaterial, Detail: "Google receives only the text of a tool result"}
-	}
-	switch value := content.(type) {
-	case nil:
-		return "", nil
-	case string:
-		return value, nil
-	case []any:
-		var text strings.Builder
-		var losses []core.Loss
-		for index, raw := range value {
-			part, _ := raw.(map[string]any)
-			if part["type"] != "text" {
-				losses = append(losses, lost(path+"."+strconv.Itoa(index)))
-				continue
-			}
-			value, _ := part["text"].(string)
-			text.WriteString(value)
-		}
-		return text.String(), losses
-	}
-	return "", []core.Loss{lost(path)}
+	return chatText(path, content, "Google receives only the text of a tool result")
 }
 
 // googleFunctionDeclarations maps Chat function tools to Gemini function
@@ -690,7 +677,7 @@ func googleToOpenAIChat(model string, decoded map[string]any) map[string]any {
 		served = value
 	}
 	return map[string]any{
-		"id":     "chatcmpl-google",
+		"id":     newChatCompletionID("google"),
 		"object": "chat.completion",
 		"model":  served,
 		"choices": []any{map[string]any{
@@ -827,10 +814,7 @@ func googleParts(decoded map[string]any) []map[string]any {
 func googleUsage(decoded map[string]any) (int, int, int) {
 	usage, _ := decoded["usageMetadata"].(map[string]any)
 	number := func(key string) int {
-		if value, ok := usage[key].(float64); ok {
-			return int(value)
-		}
-		return 0
+		return codexChatInt(usage[key])
 	}
 	input := number("promptTokenCount")
 	output := number("candidatesTokenCount") + number("thoughtsTokenCount")
@@ -864,7 +848,7 @@ func googleEmptyReplyError(label string, decoded map[string]any) error {
 		}
 	}
 	usage, _ := decoded["usageMetadata"].(map[string]any)
-	thoughts, _ := usage["thoughtsTokenCount"].(float64)
+	thoughts := codexChatInt(usage["thoughtsTokenCount"])
 	finish := googleCandidateFinish(decoded)
 	if feedback, _ := decoded["promptFeedback"].(map[string]any); finish == "" {
 		finish, _ = feedback["blockReason"].(string)

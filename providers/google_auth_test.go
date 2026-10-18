@@ -183,6 +183,10 @@ func TestNewGoogleValidatesItsConfiguration(t *testing.T) {
 	} {
 		if _, err := NewGoogle(config); err == nil {
 			t.Errorf("%s: NewGoogle accepted %+v", name, config)
+		} else if name == "unknown request type" && err.Error() != "Vertex AI request type must be default, paygo or dedicated" {
+			t.Errorf("request-type diagnostic changed: %q", err.Error())
+		} else if (name == "location with a path" || name == "project with a query") && err.Error() != "Vertex AI project and location must be single URL path segments" {
+			t.Errorf("path diagnostic changed: %q", err.Error())
 		}
 	}
 }

@@ -396,15 +396,6 @@ func assertAnthropicFailure(t *testing.T, err error, class core.ProviderErrorCla
 	return failure
 }
 
-// anthropicEvents renders events as a data-only SSE stream.
-func anthropicEvents(events ...string) string {
-	var stream strings.Builder
-	for _, event := range events {
-		stream.WriteString("data: " + event + "\n\n")
-	}
-	return stream.String()
-}
-
 // Ported from the gateway's TestAnthropicStreamNormalAndOversizedRecords,
 // over the native stream: records pass through byte for byte, and a stream
 // fails when it cannot be read or ends before message_stop.

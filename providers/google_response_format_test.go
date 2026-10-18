@@ -147,10 +147,7 @@ func TestGoogleChatDropsResponseFormatsItCannotSend(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			for _, stream := range []bool{false, true} {
-				body, losses := googleSent(t, GoogleAIStudio, stream, `{"messages":[{"role":"user","content":"hi"}],"max_tokens":64,"response_format":`+testCase.format+`}`)
-				if want := `{"contents":[{"parts":[{"text":"hi"}],"role":"user"}],"generationConfig":{"maxOutputTokens":64}}`; body != want {
-					t.Fatalf("stream %t: body = %s\nwant   %s", stream, body, want)
-				}
+				losses := googleRefusedChat(t, `{"messages":[{"role":"user","content":"hi"}],"max_tokens":64,"response_format":`+testCase.format+`}`, stream)
 				if want := []core.Loss{googleLoss("response_format", translate.LossMaterial, testCase.detail)}; !reflect.DeepEqual(losses, want) {
 					t.Fatalf("stream %t: losses = %+v", stream, losses)
 				}
