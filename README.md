@@ -569,9 +569,11 @@ return translation.Adapter{Provider: provider}, nil // Messages over Chat
   Chat at `/v1/chat/completions` and lists a bare JSON array.
 - **Bedrock.** `NewBedrock(region, baseURL, config)` sends a Bedrock API
   key as a bearer to the base URL, or to the region's bedrock-runtime
-  endpoint, us-east-1 by default. Nothing is signed, and a malformed
-  region is refused. Bedrock has no audio API, so it serves neither audio
-  surface.
+  endpoint under `/openai/v1`, us-east-1 by default. Nothing is signed, and a
+  malformed region is refused. Native Chat content parts retain multimodal
+  input for models whose compatible endpoint accepts it. That endpoint does
+  not serve the OpenAI transcription/speech surfaces; native AWS
+  Converse/InvokeModel and bidirectional speech are separate interfaces.
 - **Errors** are `*core.ProviderError`, classified by the gateway's status
   set with `Retry-After`. A native Responses 404 or 405 is a
   `*core.SurfaceError`, and a catalog failure's `*providers.CatalogError`
@@ -710,9 +712,13 @@ Providers: func(s Settings, instance string) (core.Provider, error) {
   converted to Gemini `contents` with the gateway's mapping: each message's
   string content, system and developer text as `systemInstruction`,
   `max_tokens` and `temperature`. Tools and `response_format` map as below.
-  Every other field is dropped and reported as a loss, a material one for
-  content that is not text and for fields that change the answer's
-  structure. Embeddings embed each input with one call, and refuse
+  User content retains ordered text and media: image data URLs, explicit
+  WAV/MP3 `input_audio`, and typed PDF/audio/video file data become native
+  `inlineData`; remote media URIs become `fileData` without a local fetch.
+  Bare base64 files need a recognized filename for MIME inference; opaque
+  provider file IDs and unmapped controls are refused. Other fields are
+  reported as losses, material when they change required semantics.
+  Embeddings embed each input with one call, and refuse
   `dimensions` and encodings other than float, as the gateway does.
   `GenerateImages` implements `core.ImageGenerator`. Video generation is not
   served yet.
@@ -797,11 +803,11 @@ Providers: func(s Settings, instance string) (core.Provider, error) {
 - **Requests** are converted to `/api/chat` byte for byte as the gateway
   converts them: the messages, `temperature`, `top_p`, `tools`, and
   `max_tokens` as `num_predict`. Other fields are dropped and reported as
-  losses. The gateway's quirks stay: a developer message is sent as a system
-  one, an empty message is dropped, and content that is not a string is sent
-  as Go prints it, so an image never reaches the model as an image. Such
-  content is reported as a material loss at its path, as is each part of it
-  that is not text, such as an image.
+  losses. A developer message is sent as a system one and an empty message is
+  dropped. Strings and text parts retain their text; inline base64 user images
+  become the native `images` list in image order. Remote images, non-default
+  detail and unsupported content are material findings checked before I/O,
+  rather than stringified media or implicit downloads.
 - **Answers.** A reply becomes a Chat completion with usage from Ollama's
   evaluation counts, and a stream becomes Chat chunks ending in `[DONE]`,
   each as the gateway renders it. A stream reports its losses through

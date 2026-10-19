@@ -175,7 +175,7 @@ func TestGoogleChatReportsWhatItDrops(t *testing.T) {
 	}
 	losses := []core.Loss{
 		dropped("max_completion_tokens", translate.LossAdvisory, "Google does not send this Chat field"),
-		dropped("messages.1.content.0", translate.LossMaterial, "Google receives only text content"),
+		{Path: "messages.1.content.0", Class: translate.LossUnsupported, Severity: translate.LossMaterial, Detail: "Google cannot map this content-part type"},
 		dropped("messages.3.tool_calls.0", translate.LossMaterial, "Google sends only function tool calls with a name"),
 		dropped("messages.4", translate.LossMaterial, "the tool call this result answers was not sent, so Google does not send it either"),
 		dropped("messages.5.name", translate.LossAdvisory, "Google does not send this message field"),

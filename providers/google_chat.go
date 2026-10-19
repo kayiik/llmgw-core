@@ -273,7 +273,8 @@ const googleSkipSignature = "skip_thought_signature_validator"
 // does for text: system and developer text becomes the system instruction,
 // since Gemini has no system role, an assistant is the model, and every
 // other message keeps its role, or is the user's when it has none, with its
-// string or ordered text-part content as one text part.
+// string or ordered text/media parts. Adjacent text parts coalesce without
+// changing their position relative to media.
 //
 // An assistant's tool calls become functionCall parts after its text, each
 // with the arguments it holds as a JSON object and the thought signature it
@@ -299,10 +300,16 @@ func googleChatContents(messages []map[string]any) ([]map[string]any, []map[stri
 		role, _ := message["role"].(string)
 		path := "messages." + strconv.Itoa(index)
 		text := ""
-		if role != "tool" {
+		var parts []map[string]any
+		if role == "user" || role == "" {
+			var contentLosses []core.Loss
+			parts, contentLosses = googleChatContent(path+".content", message["content"])
+			losses = append(losses, contentLosses...)
+		} else if role != "tool" {
 			var textLosses []core.Loss
 			text, textLosses = chatText(path+".content", message["content"], "Google receives only text content")
 			losses = append(losses, textLosses...)
+			parts = []map[string]any{{"text": text}}
 		}
 		switch role {
 		case "system", "developer":
@@ -325,7 +332,6 @@ func googleChatContents(messages []map[string]any) ([]map[string]any, []map[stri
 			continue
 		}
 		results = nil
-		parts := []map[string]any{{"text": text}}
 		switch role {
 		case "assistant":
 			role = "model"

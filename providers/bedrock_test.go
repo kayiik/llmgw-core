@@ -16,9 +16,9 @@ import (
 func TestNewBedrockTemplatesTheRegionEndpoint(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct{ region, baseURL, want string }{
-		{"", "", "https://bedrock-runtime.us-east-1.amazonaws.com/v1"},
-		{" eu-west-3 ", "", "https://bedrock-runtime.eu-west-3.amazonaws.com/v1"},
-		{"US-GOV-WEST-1", "", "https://bedrock-runtime.us-gov-west-1.amazonaws.com/v1"},
+		{"", "", "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1"},
+		{" eu-west-3 ", "", "https://bedrock-runtime.eu-west-3.amazonaws.com/openai/v1"},
+		{"US-GOV-WEST-1", "", "https://bedrock-runtime.us-gov-west-1.amazonaws.com/openai/v1"},
 		{"eu-west-3", " https://bedrock-mantle.example.test/v1/ ", "https://bedrock-mantle.example.test/v1"},
 	} {
 		provider, err := NewBedrock(test.region, test.baseURL, OpenAICompatibleConfig{BaseURL: "https://ignored.example.test"})

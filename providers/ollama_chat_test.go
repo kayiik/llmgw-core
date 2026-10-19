@@ -9,7 +9,7 @@ import (
 	core "github.com/kayiik/llmgw-core"
 )
 
-// ollamaRichChat includes unrepresentable image/schema input. Preparation
+// ollamaRichChat includes unrepresentable image-detail/schema controls. Preparation
 // retains its findings, but execution must now refuse it before inference.
 const ollamaRichChat = `{"model":"ignored","stream":true,"messages":[` +
 	`{"role":"developer","content":"Answer <briefly> & kindly."},` +
@@ -23,11 +23,11 @@ const ollamaRichChat = `{"model":"ignored","stream":true,"messages":[` +
 	`"tool_choice":"auto","response_format":{"type":"json_object"},` +
 	`"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string","maxLength":64.0}}}}}]}`
 
-// ollamaRichLosses is what that conversion loses, the image first among it.
+// ollamaRichLosses includes image detail: inline image bytes themselves are mapped.
 var ollamaRichLosses = []string{
 	"advisory dropped max_completion_tokens",
 	"advisory approximated messages.0.role",
-	"material dropped messages.3.content.1",
+	"material unsupported messages.3.content.1.image_url.detail",
 	"material dropped response_format",
 	"advisory dropped seed",
 	"advisory dropped stop",
