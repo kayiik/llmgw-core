@@ -116,6 +116,23 @@ type ModelsResponse struct {
 	Models []core.ModelInfo `json:"models"`
 }
 
+// AllowanceResponse carries optional qualified provider observations, not
+// gateway limits or token estimates. Status is "observed" or "unknown".
+type AllowanceResponse struct {
+	Status       string                 `json:"status"`
+	Observations []AllowanceObservation `json:"observations,omitempty"`
+}
+
+// AllowanceObservation identifies the scope and time of a provider's remaining
+// fraction. Nil means unknown; a present zero means exactly zero remaining.
+type AllowanceObservation struct {
+	ProjectID         string     `json:"project_id,omitempty"`
+	ModelID           string     `json:"model_id"`
+	ObservedAt        time.Time  `json:"observed_at"`
+	RemainingFraction *float64   `json:"remaining_fraction,omitempty"`
+	ResetAt           *time.Time `json:"reset_at,omitempty"`
+}
+
 // RefreshRequest asks refresh to renew a stored credential.
 type RefreshRequest struct {
 	Record tokenstore.Record `json:"record"`

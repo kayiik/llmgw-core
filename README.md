@@ -1,11 +1,12 @@
 # llmgw-core
 
-Headless, embeddable LLM routing engine and resilient multi-provider proxy for Go.
+Reusable Go provider, execution, routing and transport primitives, with a
+headless HTTP engine for embedding a multi-provider proxy.
 
 ## Highlights
 
 - **Headless & Zero Database:** Pure Go `http.Handler`. Mounts anywhere (`net/http`, Chi, Gin, Fiber, Echo) without requiring SQLite, PostgreSQL, or any storage engine.
-- **Bi-Directional Wire Translation:** Full Anthropic Messages API (`/v1/messages`) support translated dynamically to OpenAI backends (and SSE streaming) via `llm-translate`.
+- **Explicit Wire Translation:** Supported conversions between Chat Completions, Anthropic Messages and Responses via `llm-translate`, with loss assessment and route-specific streaming support. See [Translation](#translation).
 - **Resilient Multi-Provider Routing:** Route aliases, ordered failover chains, rate-limit 429 detection, and circuit breaking.
 - **Pluggable Extension Hooks:**
   - `Authenticator`: Custom token, session, or API key validation.
@@ -25,20 +26,32 @@ go get github.com/kayiik/llmgw-core
 - **llm-provider-auth v0.0.1.** Credentials are stored through its
   `tokenstore` contract, browser sign-in runs on its `browseroauth` package,
   and Google service accounts mint tokens through its `gcp` package.
-- **llm-translate v0.0.1.** Conversions report the vendor fields inside
+- **llm-translate v0.0.2.** Conversions report the vendor fields inside
   messages that the target surface cannot carry, and the translation adapter
   enforces those losses; see [Loss policy](#loss-policy). The Anthropic
   provider has no loss report, so it keeps serving the histories it served
   before, and it carries the `cache_control` of Chat text parts into the
   Messages request, system prompt included.
 
-## Quick Start (Embedded in 15 Lines)
+These are the published module pins declared in `go.mod`. Local integration
+builds use external local module bindings for changes beyond those pins;
+installing the published dependencies alone does not reproduce that source.
+The `realtimews` package and its Gorilla WebSocket dependency are included in
+this source; their presence does not establish availability in a published release.
+
+## HTTP engine quick start
+
+The embedded `Engine` handles models, Chat Completions, Messages and health
+routes. It does not expose every surface available through the Provider and
+Runtime APIs below.
 
 ```go
 package main
 
 import (
     "net/http"
+    "os"
+
     "github.com/kayiik/llmgw-core"
     "github.com/kayiik/llmgw-core/providers"
 )
@@ -159,8 +172,9 @@ its runtime type and the reason.
 `runtime.RegistryProviders(registry, describe)` is a `ProviderFactory` built on
 it: `describe` returns an instance's `RegistryInstance` from the product's
 settings, the entry it names is resolved by id or alias, and `Translate` puts a
-`translation.Adapter` in front, so every instance serves Chat Completions,
-Messages and Responses:
+`translation.Adapter` in front. Available client surfaces depend on the
+provider's native surfaces, the supported conversion and the invocation mode;
+enabling translation does not make every instance serve all three chat APIs:
 
 ```go
 Providers: coreruntime.RegistryProviders(registry, func(s Settings, instance string) (coreruntime.RegistryInstance, error) {
@@ -222,15 +236,15 @@ Products supply three stores, each with an in-memory reference implementation:
 - **`EvidenceSink`** receives `AccountEvidence`: which credential served which
   operation, and the classified outcome. Reference: `MemoryEvidenceSink`.
 
-### M5 foundations
+### Model capabilities, wire preservation and token counts
 
-The API the remaining transports build on. All of it is additive: no
-existing vertical sends, returns or classifies anything differently.
+These interfaces describe model evidence, wire preservation, token counting
+and credential kinds for providers and transports:
 
 ```go
 // package core
 type ModelInfo struct {
-    // ... the fields above, unchanged ...
+    // ... other ModelInfo fields omitted ...
     DisplayName        string         `json:"display_name,omitempty"`
     Vendor             string         `json:"vendor,omitempty"`
     Free               bool           `json:"free,omitempty"`
@@ -316,8 +330,43 @@ The Runtime works with the product's own settings type:
 - Only upstream outcomes (an HTTP status or a transport failure) change an
   instance's health.
 
-`translation.Adapter{Provider, Policy}` serves surfaces a provider lacks by
-translating through llm-translate:
+### Prepared calls
+
+`core.PrepareCall` describes one operation through a `CallDescription`, including
+its actual upstream API, transport, conversions and fidelity assessment.
+Adaptation requires explicit `CallPreparationOptions.AllowAdaptation` and a
+compatible execution `CallPolicy`; native dispatch remains the default.
+
+`Runtime.PrepareCall` binds the operation to its caller, instance, request
+digest, credential scope and settings generation. `InvokePrepared` or
+`StreamPrepared` executes that binding once; a changed binding is refused rather
+than silently preparing a different request.
+
+The prepared translation path additionally supports finite Chat/Responses
+streaming conversions and the named Responses -> Chat -> Messages composition
+over a native Messages provider. Each leg is assessed before execution; this is
+not arbitrary route search or a promise that every feature is representable.
+Legacy `Adapter.Invoke`, `Adapter.Stream` and surface-listing helpers retain the
+availability described in [Translation](#translation).
+
+### Source-usage evidence
+
+`SourceUsageObservation` records the actual native attempt's API, instance,
+model, attempt number, presence-qualified usage, provenance/details and
+cancellation before client conversion. `SourceUsageOf` reads only an explicit
+reporter; it does not infer measured usage from a converted response's shape or
+required zeros. An absent count is unknown, not a measured zero, and source
+completion quality does not establish successful client delivery.
+
+Runtime prepared handles expose `SourceUsage` and `SourceUsageHistory`.
+`SourceUsageCollector` retains at most 64 attempts and marks truncated history.
+This evidence is distinct from rendered client usage and `UsageHook` telemetry;
+provider/protocol coverage still determines which counts can be observed.
+
+### Translation
+
+The legacy `translation.Adapter{Provider, Policy}` methods serve surfaces a
+provider lacks by translating through llm-translate:
 
 - Messages over Chat Completions, streaming included.
 - Chat Completions over Responses.
@@ -527,8 +576,9 @@ return translation.Adapter{Provider: provider}, nil // Messages over Chat
 - **Surfaces.** Chat Completions for every model, and Responses for a
   model whose row lists it or of the `openai` entry. Both are declared
   through `core.WirePreserver`, so a product labels them native. The
-  Adapter serves Responses over Chat for the other models, but does not
-  stream it.
+  legacy Adapter methods serve Responses over Chat for the other models, but
+  do not stream it. The prepared path has separate streaming support; see
+  [Prepared calls](#prepared-calls).
 - **Audio.** `audio_transcriptions` and `audio_speech` are native for every
   model, and declared through `core.WirePreserver` too. A transcription's
   multipart upload is forwarded byte for byte, with its own `Content-Type`
@@ -816,8 +866,10 @@ Providers: func(s Settings, instance string) (core.Provider, error) {
   with its `details.family` as the vendor. Ollama reports no surfaces or
   capabilities.
 - **Errors** are `*core.ProviderError`, classified by the gateway's status
-  set with `Retry-After`. A stream that breaks off may be repeated, as in
-  the gateway.
+  set with `Retry-After`. Stream opening or a failure before commitment may be
+  retried under the execution policy. After output is delivered, failures must
+  reach the caller rather than transparently replaying or failing over; see
+  [Execution](#execution).
 
 ## Extensions
 
@@ -868,6 +920,25 @@ coordinator, err := tokenstore.NewCoordinator(store, client.RefreshFunc("example
   Bind it to the loopback interface and start it with a secret.
 
 The package documentation specifies the protocol for anyone writing a daemon.
+
+## WebSocket transport
+
+`realtimews` provides `Dial`, `Upgrade`, `Read`, `Write` and `Close` for bounded
+UTF-8 text-JSON messages, at most 1 MiB each. It supports one reader and
+serialized concurrent writers, with ten-second handshake/write bounds and a
+connection lifetime bounded by its context and at most two hours. Cancellation
+or `Close` unblocks pending I/O.
+
+`Dial` follows no redirects. `Upgrade` accepts same-origin browser requests or
+server-to-server requests without Origin; its request context governs the
+connection lifetime, so the upgraded handler must remain alive while using it.
+Application response headers are preserved while WebSocket negotiation and
+HTTP framing headers remain transport-owned.
+
+This package transports JSON; it does not translate realtime events or audio,
+track playback, or reconcile conversation history. Accurate-heard Gemini Live
+history reconciliation remains unresolved: interrupting generation or closing
+a socket does not prove that unheard audio was removed from upstream history.
 
 ## Execution
 
@@ -923,6 +994,19 @@ if err != nil {
 }
 defer result.Value.Close()
 ```
+
+### Request usage, allowances and product policy
+
+Request-usage evidence describes actual inference attempts. Upstream allowance
+discovery is a separate concern, and the execution `Admission` gate is a
+product-supplied eligibility hook. These primitives do not constitute completed
+provider/model token-cap settings, consumption settlement or allowance-aware
+routing. Production allowance collectors and refresh wiring remain missing.
+
+The proposed product-facing emergency-fallback SDK is also unimplemented:
+product-key roster retrieval, authorized direct-credential delivery, encrypted
+SQLite caching, refresh/last-known-good behavior, gateway-first/direct-fallback
+orchestration and outage-usage reconciliation are not existing core APIs.
 
 ### Per-instance resilience
 

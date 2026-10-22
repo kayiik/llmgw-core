@@ -358,8 +358,8 @@ func (r *Runtime[S]) ListModels(ctx context.Context, caller core.Caller, instanc
 // observe records account evidence for an operation and updates the
 // instance's health. Only upstream outcomes, an HTTP status or a transport
 // failure, change health: a configuration, request, surface or credential
-// error says nothing about the provider. A caller that gave up records
-// nothing.
+// error says nothing about the provider. A caller that gave up or an explicitly
+// local execution/admission failure records nothing.
 func (r *Runtime[S]) observe(ctx context.Context, caller core.Caller, instance string, c credential, operation string, surface core.ModelSurface, model string, err error) {
 	if ctx.Err() != nil {
 		return
@@ -369,6 +369,9 @@ func (r *Runtime[S]) observe(ctx context.Context, caller core.Caller, instance s
 	affectsHealth := true
 	if err != nil {
 		classification := core.ClassifyError(err)
+		if classification.Local {
+			return
+		}
 		switch {
 		case classification.StatusCode != 0:
 			outcome = core.ClassifyProviderFailure(core.ProviderFailure{StatusCode: classification.StatusCode, ObservedAt: now})

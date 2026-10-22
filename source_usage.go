@@ -81,6 +81,16 @@ func WithSourceUsageCollector(ctx context.Context, collector *SourceUsageCollect
 	return context.WithValue(ctx, sourceUsageKey{}, collector)
 }
 
+// SourceUsageHistoryFromContext returns a detached snapshot of the existing
+// context collector, or an empty history when no collector is attached.
+func SourceUsageHistoryFromContext(ctx context.Context) SourceUsageHistory {
+	if ctx == nil {
+		return SourceUsageHistory{}
+	}
+	collector, _ := ctx.Value(sourceUsageKey{}).(*SourceUsageCollector)
+	return collector.SourceUsageHistory()
+}
+
 func (c *SourceUsageCollector) SourceUsage() (SourceUsageObservation, bool) {
 	if c == nil {
 		return SourceUsageObservation{}, false

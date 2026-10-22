@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -24,7 +25,7 @@ import (
 // is bounded by neither.
 const DefaultTimeout = 180 * time.Second
 
-// DefaultControlTimeout bounds info, models, refresh and every oauth step when
+// DefaultControlTimeout bounds info, models, allowance, refresh and every oauth step when
 // the caller's context has no deadline. It keeps a refresh well inside
 // tokenstore.Coordinator's default lease wait, which must exceed it.
 const DefaultControlTimeout = 30 * time.Second
@@ -176,6 +177,49 @@ func (c *Client) ListModels(ctx context.Context, provider string, credential *co
 		return nil, invalidAnswer(provider, "models", err)
 	}
 	return catalog.Models, nil
+}
+
+// Allowance reads optional provider observations for credential. An unsupported
+// daemon returns an error with HTTP status 404; callers can treat it as unknown.
+// Failures never initiate inference. Error messages omit daemon response bodies.
+func (c *Client) Allowance(ctx context.Context, provider string, credential *core.Credential) (AllowanceResponse, error) {
+	endpoint, err := c.providerURL(provider, "allowance")
+	if err != nil {
+		return AllowanceResponse{}, err
+	}
+	ctx, cancel := withDeadline(ctx, DefaultControlTimeout)
+	defer cancel()
+	request, err := c.newRequest(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return AllowanceResponse{}, err
+	}
+	request.Header.Set("Accept", core.ContentTypeJSON)
+	SetCredentialHeaders(request.Header, credential)
+	response, err := c.do(request, c.answerWait)
+	if err != nil {
+		return AllowanceResponse{}, transportError(ctx, provider, "allowance", err)
+	}
+	defer response.Body.Close()
+	if !succeeded(response) {
+		// Preserve the shared status classification without echoing an optional
+		// control endpoint's potentially credential-bearing diagnostic body.
+		return AllowanceResponse{}, statusError(&http.Response{
+			StatusCode: response.StatusCode, Header: response.Header, Body: http.NoBody,
+		}, provider, "allowance")
+	}
+	var answer AllowanceResponse
+	if err := decodeBounded(response.Body, maxJSONBody, &answer); err != nil {
+		return AllowanceResponse{}, invalidAnswer(provider, "allowance", err)
+	}
+	if answer.Status != "observed" && answer.Status != "unknown" {
+		return AllowanceResponse{}, invalidAnswer(provider, "allowance", errors.New("invalid allowance status"))
+	}
+	for _, observation := range answer.Observations {
+		if fraction := observation.RemainingFraction; fraction != nil && (math.IsNaN(*fraction) || math.IsInf(*fraction, 0) || *fraction < 0 || *fraction > 1) {
+			return AllowanceResponse{}, invalidAnswer(provider, "allowance", errors.New("invalid allowance fraction"))
+		}
+	}
+	return answer, nil
 }
 
 // Invoke performs one non-streaming operation on provider. The response's

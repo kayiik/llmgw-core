@@ -1,12 +1,64 @@
 package core_test
 
 import (
+	"context"
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	translate "github.com/kayiik/llm-translate"
 	core "github.com/kayiik/llmgw-core"
 )
+
+func TestSourceUsageHistoryFromContextWithoutCollector(t *testing.T) {
+	for _, ctx := range []context.Context{nil, t.Context(), core.WithSourceUsageCollector(t.Context(), nil)} {
+		history := core.SourceUsageHistoryFromContext(ctx)
+		if len(history.Attempts) != 0 || history.Truncated {
+			t.Fatalf("history fabricated without collector: %+v", history)
+		}
+	}
+}
+
+func TestSourceUsageHistoryFromContextObservesExistingCollector(t *testing.T) {
+	collector := core.NewSourceUsageCollectorFor(core.Target{Provider: "p", Model: "m"})
+	ctx, cancel := context.WithCancel(core.WithSourceUsageCollector(t.Context(), collector))
+	defer cancel()
+	observe := func() core.SourceUsageHistory { return core.SourceUsageHistoryFromContext(ctx) }
+	if len(observe().Attempts) != 0 {
+		t.Fatal("observation fabricated before native attempt")
+	}
+	for range 65 {
+		record := core.BeginSourceUsage(ctx, core.UpstreamAPIChatCompletions, translate.UsageDialectChat)
+		record.Merge(map[string]any{"prompt_tokens": 11, "completion_tokens": 7})
+		record.Finish(translate.CompletionFailed, false)
+	}
+	got := observe()
+	if !reflect.DeepEqual(got, collector.SourceUsageHistory()) || !got.Truncated || len(got.Attempts) != 64 || got.Attempts[63].Attempt != 65 || got.Attempts[63].Instance != "p" || got.Attempts[63].Model != "m" {
+		t.Fatalf("observer did not retain existing collector history: %+v", got)
+	}
+}
+
+func TestSourceUsageHistoryFromContextSnapshotIsolation(t *testing.T) {
+	collector := core.NewSourceUsageCollector()
+	ctx := core.WithSourceUsageCollector(t.Context(), collector)
+	record := core.BeginSourceUsage(ctx, core.UpstreamAPIChatCompletions, translate.UsageDialectChat)
+	record.Merge(map[string]any{"prompt_tokens": 11, "completion_tokens": -1})
+	record.Finish(translate.CompletionFailed, true)
+	want := collector.SourceUsageHistory()
+	got := core.SourceUsageHistoryFromContext(ctx)
+	if len(got.Attempts) != 1 || len(got.Attempts[0].Usage.Issues) == 0 {
+		t.Fatalf("fixture missing native invalid-count evidence: %+v", got)
+	}
+	got.Attempts[0].Instance = "changed"
+	got.Attempts[0].Usage.InputTokens.Value = 0
+	got.Attempts[0].Usage.Raw["prompt_tokens"][0] = '9'
+	got.Attempts[0].Usage.Raw["extra"] = json.RawMessage(`0`)
+	got.Attempts[0].Usage.Issues[0] = "changed"
+	got.Attempts = append(got.Attempts, core.SourceUsageObservation{})
+	if again := core.SourceUsageHistoryFromContext(ctx); !reflect.DeepEqual(again, want) {
+		t.Fatalf("context snapshot aliases collector: got %+v, want %+v", again, want)
+	}
+}
 
 func TestSourceUsageCollectorRetainsNativeLateCountsAndDetachedEvidence(t *testing.T) {
 	collector := core.NewSourceUsageCollector()

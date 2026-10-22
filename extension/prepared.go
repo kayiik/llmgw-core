@@ -69,7 +69,7 @@ func (p *Provider) preparedSurfaces(model string) ([]core.ModelSurface, *core.Mo
 		// Endpoint declarations override provider defaults, including a
 		// response-only row behind a legacy Chat-shaped facade. WS is not SSE.
 		for _, path := range row.SupportedAPIs {
-			for _, surface := range allPreparedSurfaces {
+			for _, surface := range []core.ModelSurface{core.ModelSurfaceChatCompletions, core.ModelSurfaceResponses, core.ModelSurfaceMessages, core.ModelSurfaceEmbeddings, core.ModelSurfaceAudioTranscriptions, core.ModelSurfaceAudioSpeech, core.ModelSurfaceImages, core.ModelSurfaceVideos} {
 				canonical := core.SurfacePath(surface)
 				normalized := strings.ToLower(strings.TrimSpace(path))
 				if normalized == canonical || normalized == strings.TrimPrefix(canonical, "/v1") {
@@ -96,8 +96,6 @@ func (p *Provider) preparedSurfaces(model string) ([]core.ModelSurface, *core.Mo
 	}
 	return surfaces, capabilities, len(surfaces) > 0
 }
-
-var allPreparedSurfaces = []core.ModelSurface{core.ModelSurfaceChatCompletions, core.ModelSurfaceResponses, core.ModelSurfaceMessages, core.ModelSurfaceEmbeddings, core.ModelSurfaceAudioTranscriptions, core.ModelSurfaceAudioSpeech, core.ModelSurfaceImages, core.ModelSurfaceVideos}
 
 func knownSurfaces(values []core.ModelSurface) []core.ModelSurface {
 	var result []core.ModelSurface
