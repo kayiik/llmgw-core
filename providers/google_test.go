@@ -149,7 +149,7 @@ func TestGoogleChatTranslatesGeminiShape(t *testing.T) {
 	}
 	body := `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"VERTEX OK","role":"assistant"}}],` +
 		`"id":"chatcmpl-google","model":"gemini-3.5-flash","object":"chat.completion","usage":{"completion_tokens":2,"prompt_tokens":7,"total_tokens":95}}`
-	if string(response.Body) != body || response.ContentType != core.ContentTypeJSON || len(response.Losses) != 0 {
+	if completionGolden(t, string(response.Body), "google") != body || response.ContentType != core.ContentTypeJSON || len(response.Losses) != 0 {
 		t.Fatalf("response = %s %q losses=%v", response.Body, response.ContentType, response.Losses)
 	}
 }
@@ -160,28 +160,22 @@ func TestGoogleChatTranslatesGeminiShape(t *testing.T) {
 // HTML escaping and float64 numbers included.
 func TestGoogleChatReportsWhatItDrops(t *testing.T) {
 	t.Parallel()
-	fake, base := newGoogleFake(t, googleAnswer(http.StatusOK, googleHelloAnswer))
-	provider := newGoogleTest(t, GoogleConfig{Deployment: GoogleAIStudio, BaseURL: base})
-	response, err := provider.Invoke(context.Background(), googleChatRequest("gemini-3.5-flash", `{"stream":true,"messages":[null,{"role":5,"content":["x"]},`+
+	body, reported := googleChatBody(t, `{"stream":true,"messages":[null,{"role":5,"content":["x"]},`+
 		`{"role":"developer","content":"<dev> & co"},{"role":"assistant","content":null,"tool_calls":[{"id":"c1"}]},{"role":"tool","content":"r","tool_call_id":"c1"},`+
 		`{"role":"user","content":"u","name":"n","tool_call_id":"c1"}],`+
-		`"max_tokens":1e3,"temperature":0.70,"max_completion_tokens":5,"n":1,"response_format":{"type":"json_object"},"tools":[{"type":"function"}],"top_p":null}`, googleKey("k")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	calls := fake.take()
+		`"max_tokens":1e3,"temperature":0.70,"max_completion_tokens":5,"n":1,"response_format":{"type":"json_object"},"tools":[{"type":"function"}],"top_p":null}`)
 	want := `{"contents":[{"parts":[{"text":""}],"role":"user"},{"parts":[{"text":""}],"role":"user"},{"parts":[{"text":""}],"role":"model"},` +
 		`{"parts":[{"text":"u"}],"role":"user"}],"generationConfig":{"maxOutputTokens":1000,"responseMimeType":"application/json","temperature":0.7},` +
 		`"systemInstruction":{"parts":[{"text":"\u003cdev\u003e \u0026 co"}]}}`
-	if len(calls) != 1 || calls[0].body != want {
-		t.Fatalf("upstream = %+v", calls)
+	if body != want {
+		t.Fatalf("prepared = %s", body)
 	}
 	dropped := func(path string, severity translate.LossSeverity, detail string) core.Loss {
 		return core.Loss{Path: path, Class: translate.LossDropped, Severity: severity, Detail: detail}
 	}
 	losses := []core.Loss{
 		dropped("max_completion_tokens", translate.LossAdvisory, "Google does not send this Chat field"),
-		dropped("messages.1.content", translate.LossMaterial, "Google receives only text content, so this content is sent as empty text"),
+		{Path: "messages.1.content.0", Class: translate.LossUnsupported, Severity: translate.LossMaterial, Detail: "Google cannot map this content-part type"},
 		dropped("messages.3.tool_calls.0", translate.LossMaterial, "Google sends only function tool calls with a name"),
 		dropped("messages.4", translate.LossMaterial, "the tool call this result answers was not sent, so Google does not send it either"),
 		dropped("messages.5.name", translate.LossAdvisory, "Google does not send this message field"),
@@ -189,8 +183,8 @@ func TestGoogleChatReportsWhatItDrops(t *testing.T) {
 		dropped("n", translate.LossAdvisory, "Google already behaves as this value asks"),
 		dropped("tools.0", translate.LossMaterial, "Google sends only function tools with a name, so the model cannot call this one"),
 	}
-	if !reflect.DeepEqual(response.Losses, losses) {
-		t.Fatalf("losses = %+v", response.Losses)
+	if !reflect.DeepEqual(reported, losses) {
+		t.Fatalf("losses = %+v", reported)
 	}
 }
 

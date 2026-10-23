@@ -67,7 +67,7 @@ func TestBuildMakesTheProviderOfEveryEntryCoreServes(t *testing.T) {
 			built = ok && p.registryID == entry.ID && p.label == "OpenAI-compatible"
 		case "bedrock":
 			p, ok := provider.(*OpenAICompatible)
-			built = ok && p.label == "Bedrock" && p.baseURL == "https://bedrock-runtime.us-east-1.amazonaws.com/v1"
+			built = ok && p.label == "Bedrock" && p.baseURL == "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1"
 		case "anthropic":
 			_, built = provider.(*Anthropic)
 		case "ai_studio", "vertex_ai":
@@ -182,7 +182,7 @@ func TestBuildPassesTheInstanceAndTheEntryDefaults(t *testing.T) {
 		}
 		return provider
 	}
-	if p := build("bedrock", Instance{Region: "eu-west-1"}).(*OpenAICompatible); p.baseURL != "https://bedrock-runtime.eu-west-1.amazonaws.com/v1" {
+	if p := build("bedrock", Instance{Region: "eu-west-1"}).(*OpenAICompatible); p.baseURL != "https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1" {
 		t.Errorf("Bedrock base = %s", p.baseURL)
 	}
 	if p := build("vertex_ai", Instance{Project: "fixture-project", RequestType: "paygo"}).(*Google); p.location != "global" || p.project != "fixture-project" ||

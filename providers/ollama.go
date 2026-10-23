@@ -39,14 +39,12 @@ type OllamaConfig struct {
 // /api/chat, as the gateway's OllamaProvider does. Ollama is keyless, so
 // every operation ignores its credential.
 //
-// Chat Completions is its only surface, and Ollama serves it natively by
-// converting each request to /api/chat and each answer back, byte for byte
-// as the gateway does. A request sends its messages, temperature, top_p,
+// Chat Completions is its only adapter surface. Each request is converted
+// to /api/chat and each answer back. A request sends messages, temperature, top_p,
 // tools, and max_tokens as num_predict; every other field is dropped and
-// reported in Response.Losses. Content that is not a string reaches Ollama
-// printed as Go prints it, as the gateway sends it, so an image never
-// reaches it as an image; that is reported as a material loss at the
-// content's path. A stream is Ollama's NDJSON as Chat chunks, ending in
+// reported in Response.Losses. String and text-part content is preserved;
+// material request losses, including unsupported image parts, are refused
+// before inference. A stream is Ollama's NDJSON as Chat chunks, ending in
 // [DONE]. A translation.Adapter in front serves Messages and Responses over
 // Chat.
 type Ollama struct {
@@ -120,6 +118,9 @@ func (p *Ollama) Invoke(ctx context.Context, request core.Request) (core.Respons
 	if err != nil {
 		return core.Response{}, err
 	}
+	if err := (core.LossPolicy{}).Check(call.losses); err != nil {
+		return core.Response{Losses: call.losses}, err
+	}
 	response, err := p.post(ctx, call.body)
 	if err != nil {
 		return core.Response{}, err
@@ -145,6 +146,9 @@ func (p *Ollama) Invoke(ctx context.Context, request core.Request) (core.Respons
 func (p *Ollama) Stream(ctx context.Context, request core.Request) (core.StreamIter, error) {
 	call, err := ollamaPrepare(request, true)
 	if err != nil {
+		return nil, err
+	}
+	if err := (core.LossPolicy{}).Check(call.losses); err != nil {
 		return nil, err
 	}
 	response, err := p.post(ctx, call.body)

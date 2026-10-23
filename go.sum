@@ -1,4 +1,6 @@
+github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
+github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/kayiik/llm-provider-auth v0.0.1 h1:IYq32OeyWQy7ftsbn/phztxM/NpQeY+z2RB6V9izi3c=
 github.com/kayiik/llm-provider-auth v0.0.1/go.mod h1:jfxFEG/xTTyc0XiTgRwq+vr1/0Ch5YXcbps99sfvw2g=
-github.com/kayiik/llm-translate v0.0.2 h1:O3jdBPN9j8HDsbGJ+hu1Jl8kh5abrf6gmrQ7K/GNUoY=
-github.com/kayiik/llm-translate v0.0.2/go.mod h1:TCmZ3uDwod5ZenNLa07GeA/aMutKKZCJnmfMLvmvl/0=
+github.com/kayiik/llm-translate v0.0.3 h1:iibHYy+d3SvVssHpT+FChK1FK1h9cpTRA0qvIl0TZx0=
+github.com/kayiik/llm-translate v0.0.3/go.mod h1:TCmZ3uDwod5ZenNLa07GeA/aMutKKZCJnmfMLvmvl/0=

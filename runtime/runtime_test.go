@@ -3,8 +3,10 @@ package runtime_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -117,6 +119,69 @@ func mustRuntime(t *testing.T, options coreruntime.Options[settings]) *corerunti
 		t.Fatal(err)
 	}
 	return runtime
+}
+
+func TestRuntimeObserverIgnoresLocalStatusErrors(t *testing.T) {
+	for _, operation := range []string{"invoke", "stream"} {
+		for _, seedStatus := range []int{200, 500} {
+			t.Run(fmt.Sprintf("%s/seed%d", operation, seedStatus), func(t *testing.T) {
+				evidence := &core.MemoryEvidenceSink{}
+				var provider *fakeProvider
+				runtime := mustRuntime(t, coreruntime.Options[settings]{
+					Providers: factory(&counters{}, func(p *fakeProvider) { provider = p }), Evidence: evidence,
+				})
+				ctx := t.Context()
+				caller := core.Caller{ID: "caller"}
+				if _, err := runtime.Invoke(ctx, caller, "p", chat); err != nil {
+					t.Fatal(err)
+				}
+				call := func() error {
+					if operation == "stream" {
+						stream, err := runtime.Stream(ctx, caller, "p", chat)
+						if stream != nil {
+							stream.Close()
+						}
+						return err
+					}
+					_, err := runtime.Invoke(ctx, caller, "p", chat)
+					return err
+				}
+				if seedStatus == 500 {
+					provider.failWith = &core.ProviderError{Message: "upstream seed", Classification: core.ProviderErrorClassification{StatusCode: 500}}
+					if err := call(); err == nil {
+						t.Fatal("missing seed failure")
+					}
+				}
+				beforeHealth, beforeEvidence := runtime.Health("p"), evidence.Records()
+				for _, status := range []int{429, 500} {
+					classification := core.ProviderErrorClassification{StatusCode: status, FailoverEligible: true, RetryAfter: time.Second, Local: true}
+					local := &core.ProviderError{Message: "local admission/store", Classification: classification}
+					provider.failWith = fmt.Errorf("wrapped: %w", local)
+					err := call()
+					if !errors.Is(err, local) || core.ClassifyError(err) != classification {
+						t.Fatalf("routing metadata changed: %v / %+v", err, core.ClassifyError(err))
+					}
+					if !reflect.DeepEqual(runtime.Health("p"), beforeHealth) || !reflect.DeepEqual(evidence.Records(), beforeEvidence) {
+						t.Fatalf("local%d changed health or account evidence", status)
+					}
+				}
+				for i, status := range []int{429, 500} {
+					provider.failWith = &core.ProviderError{Message: "real upstream", Classification: core.ProviderErrorClassification{StatusCode: status}}
+					if err := call(); err == nil {
+						t.Fatal("missing upstream failure")
+					}
+					want := core.ClassifyProviderFailure(core.ProviderFailure{StatusCode: status})
+					health, records := runtime.Health("p"), evidence.Records()
+					if health.Status != want.Status || health.ErrorClass != want.ErrorClass || len(records) != len(beforeEvidence)+i+1 {
+						t.Fatalf("upstream%d not observed: health=%+v evidence=%+v", status, health, records)
+					}
+					if outcome := records[len(records)-1].Outcome; !reflect.DeepEqual(outcome, health) {
+						t.Fatalf("upstream evidence differs from health: %+v / %+v", outcome, health)
+					}
+				}
+			})
+		}
+	}
 }
 
 func TestNewRequiresSettingsAndProvidersAndDefaultsTheRest(t *testing.T) {

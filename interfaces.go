@@ -139,6 +139,10 @@ type ProviderErrorClassification struct {
 	FailoverEligible bool
 	CircuitFailure   bool
 	RetryAfter       time.Duration
+	// Local identifies an execution/admission failure originating locally,
+	// rather than an upstream outcome. Runtime records no provider health or
+	// account evidence for it; routing and response metadata remain unchanged.
+	Local bool
 }
 
 // ProviderErrorClassifier exposes routing metadata without requiring callers

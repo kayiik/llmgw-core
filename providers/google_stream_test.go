@@ -114,7 +114,7 @@ func TestGoogleStreamsTextAsChatChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := googleFixture(t, "stream-text.chat.golden"); frames != want {
+	if want := googleFixture(t, "stream-text.chat.golden"); completionGolden(t, frames, "google") != want {
 		t.Fatalf("frames:\n%s\nwant:\n%s", frames, want)
 	}
 	want := googleStreamCall{
@@ -152,7 +152,7 @@ func TestGoogleStreamsToolCallsAndTakesThemBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := googleFixture(t, "stream-tool-calls.chat.golden"); frames != want {
+	if want := googleFixture(t, "stream-tool-calls.chat.golden"); completionGolden(t, frames, "google") != want {
 		t.Fatalf("frames:\n%s\nwant:\n%s", frames, want)
 	}
 	const declarations = `"tools":[{"functionDeclarations":[{"description":"Current weather for a city","name":"get_weather",` +
@@ -273,6 +273,9 @@ func TestGoogleStreamEndsAsGoogleEndsIt(t *testing.T) {
 				t.Fatal(err)
 			}
 			frames, err := googleFrames(t, stream)
+			if frames != "" {
+				frames = completionGolden(t, frames, "google")
+			}
 			if frames != testCase.frames {
 				t.Fatalf("frames:\n%s\nwant:\n%s", frames, testCase.frames)
 			}

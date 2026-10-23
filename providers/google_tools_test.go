@@ -19,10 +19,23 @@ const googleWeatherTool = `{"type":"function","function":{"name":"get_weather","
 const googleWeatherDeclaration = `"tools":[{"functionDeclarations":[{"description":"Current weather for a city","name":"get_weather",` +
 	`"parametersJsonSchema":{"additionalProperties":false,"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"}}]}]`
 
-// googleChatBody sends body through Invoke and returns the generateContent
-// body Google received and the losses reported.
+// googleChatBody checks the prepared mapping. Safe mappings also go through
+// Invoke; material mappings must be refused before any upstream request.
 func googleChatBody(t *testing.T, body string) (string, []core.Loss) {
 	t.Helper()
+	prepared, err := googleChatPayload(googleChatRequest("m", body, googleKey("k")), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (core.LossPolicy{}).Check(prepared.losses) != nil {
+		googleRefusedChat(t, body, false)
+		googleRefusedChat(t, body, true)
+		encoded, err := json.Marshal(prepared.payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(encoded), prepared.losses
+	}
 	fake, base := newGoogleFake(t, googleAnswer(http.StatusOK, googleHelloAnswer))
 	provider := newGoogleTest(t, GoogleConfig{Deployment: GoogleAIStudio, BaseURL: base})
 	response, err := provider.Invoke(context.Background(), googleChatRequest("gemini-3.5-flash", body, googleKey("k")))

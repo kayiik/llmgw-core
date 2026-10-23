@@ -14,7 +14,7 @@ const BedrockDefaultRegion = "us-east-1"
 // NewBedrock returns an OpenAICompatible provider for Amazon Bedrock's
 // OpenAI-compatible endpoint, which replaces config.BaseURL. baseURL, when
 // set, is the endpoint, such as a bedrock-mantle or VPC endpoint; otherwise
-// it is https://bedrock-runtime.<region>.amazonaws.com/v1, in
+// it is https://bedrock-runtime.<region>.amazonaws.com/openai/v1, in
 // BedrockDefaultRegion when region is blank.
 //
 // A Bedrock API key is a bearer token, so a credential authenticates as it
@@ -35,7 +35,7 @@ func NewBedrock(region, baseURL string, config OpenAICompatibleConfig) (*OpenAIC
 		if !bedrockRegion(region) {
 			return nil, core.NewConfigurationError(fmt.Sprintf("%q is not an AWS region name", region), nil)
 		}
-		config.BaseURL = "https://bedrock-runtime." + region + ".amazonaws.com/v1"
+		config.BaseURL = "https://bedrock-runtime." + region + ".amazonaws.com/openai/v1"
 	}
 	provider, err := NewOpenAICompatible(config)
 	if err != nil {

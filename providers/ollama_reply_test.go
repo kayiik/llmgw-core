@@ -24,12 +24,12 @@ func TestOllamaConvertsTheAnswerAsTheGatewayDoes(t *testing.T) {
 		`"id":"chatcmpl-ollama","model":"qwen3:8b","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":12,"total_tokens":17}}`
 	provider, _ := ollamaDaemon(t, 200, answer)
 	response, err := provider.Invoke(t.Context(), ollamaChatRequest("qwen3:8b", `{"messages":[{"role":"user","content":"What is it?"}]}`))
-	if err != nil || string(response.Body) != want || response.ContentType != core.ContentTypeJSON || response.Losses != nil {
+	if err != nil || completionGolden(t, string(response.Body), "ollama") != want || response.ContentType != core.ContentTypeJSON || response.Losses != nil {
 		t.Fatalf("response = %s %q %v, err = %v", response.Body, response.ContentType, response.Losses, err)
 	}
 	provider, _ = ollamaDaemon(t, 200, `{"message":{"content":"Hi","tool_calls":[]},"prompt_eval_count":2.9}`)
 	response, err = provider.Invoke(t.Context(), ollamaChatRequest("m", `{"messages":[]}`))
-	if want := `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hi","role":"assistant"}}],"id":"chatcmpl-ollama","model":"m","object":"chat.completion","usage":{"completion_tokens":0,"prompt_tokens":2,"total_tokens":2}}`; err != nil || string(response.Body) != want {
+	if want := `{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Hi","role":"assistant"}}],"id":"chatcmpl-ollama","model":"m","object":"chat.completion","usage":{"completion_tokens":0,"prompt_tokens":2,"total_tokens":2}}`; err != nil || completionGolden(t, string(response.Body), "ollama") != want {
 		t.Fatalf("response = %s, err = %v", response.Body, err)
 	}
 	for _, answer := range []string{`not json`, `null`, `{"done":true}`, `{"message":"hi"}`, `{"message":{"content":"","tool_calls":[]},"done":true}`} {

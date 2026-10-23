@@ -94,8 +94,10 @@ type GoogleConfig struct {
 // an assistant's tool calls and tool results, as googleChatContents
 // describes, and response_format as Gemini's structured output. Every other
 // field is dropped and reported in Response.Losses, a material loss when it
-// changes the answer. A Chat stream is Gemini's streamGenerateContent as
-// Chat chunks, as googleStream renders them; embeddings do not stream. A
+// changes the answer. Material request losses are refused before inference;
+// ordinary text-part arrays preserve their text. A Chat stream is Gemini's
+// streamGenerateContent as Chat chunks, as googleStream renders them;
+// embeddings do not stream. A
 // translation.Adapter in front serves Messages and Responses over Chat, and
 // Messages streams too. GenerateImages implements core.ImageGenerator.
 // Video generation is not served yet.
@@ -154,7 +156,7 @@ func NewGoogle(config GoogleConfig) (*Google, error) {
 			p.location = vertexDefaultLocation
 		}
 		if !googlePathSegment(p.location) || (p.project != "" && !googlePathSegment(p.project)) {
-			return nil, errors.New("Vertex AI project and location must be single URL path segments")
+			return nil, fmt.Errorf("%s project and location must be single URL path segments", "Vertex AI")
 		}
 		switch strings.ToLower(strings.TrimSpace(config.RequestType)) {
 		case "", "default":
@@ -163,7 +165,7 @@ func NewGoogle(config GoogleConfig) (*Google, error) {
 		case "dedicated":
 			p.requestType = "dedicated"
 		default:
-			return nil, errors.New("Vertex AI request type must be default, paygo or dedicated")
+			return nil, fmt.Errorf("%s request type must be default, paygo or dedicated", "Vertex AI")
 		}
 	default:
 		return nil, fmt.Errorf("Google deployment must be %q or %q", GoogleAIStudio, GoogleVertexAI)
@@ -283,6 +285,14 @@ func googleJSONBody(request core.Request) (map[string]any, error) {
 // defaults, a refused answer is reported from Google's error envelope, and
 // an answer that is not a nonempty JSON object is unusable.
 func (p *Google) post(ctx context.Context, authorization googleAuthorization, endpoint string, body any) (map[string]any, error) {
+	return p.postDecoded(ctx, authorization, endpoint, body, false)
+}
+
+func (p *Google) postDecoded(ctx context.Context, authorization googleAuthorization, endpoint string, body any, exactNumbers bool) (map[string]any, error) {
+	return p.postDecodedObserved(ctx, authorization, endpoint, body, exactNumbers, nil)
+}
+
+func (p *Google) postDecodedObserved(ctx context.Context, authorization googleAuthorization, endpoint string, body any, exactNumbers bool, observe func(map[string]any)) (map[string]any, error) {
 	request, err := p.newRequest(ctx, authorization, endpoint, body)
 	if err != nil {
 		return nil, err
@@ -297,12 +307,23 @@ func (p *Google) post(ctx context.Context, authorization googleAuthorization, en
 		return nil, err
 	}
 	var decoded map[string]any
-	decodeErr := json.Unmarshal(raw, &decoded)
+	var decodeErr error
+	if exactNumbers {
+		decoded, decodeErr = preparedJSON(core.Request{Body: raw, ContentType: core.ContentTypeJSON})
+	} else {
+		decodeErr = json.Unmarshal(raw, &decoded)
+	}
 	if response.StatusCode >= http.StatusBadRequest {
+		if observe != nil {
+			observe(decoded)
+		}
 		return nil, p.statusFailure(response, raw, decoded)
 	}
 	if decodeErr != nil || len(decoded) == 0 {
 		return nil, unusableResponse(p.label()+": invalid JSON in upstream response", decodeErr)
+	}
+	if observe != nil {
+		observe(decoded)
 	}
 	return decoded, nil
 }
@@ -311,6 +332,10 @@ func (p *Google) post(ctx context.Context, authorization googleAuthorization, en
 // open response of a request Google accepted. A refusal is read and
 // reported as post reports it.
 func (p *Google) open(ctx context.Context, authorization googleAuthorization, endpoint string, body any) (*http.Response, error) {
+	return p.openObserved(ctx, authorization, endpoint, body, nil)
+}
+
+func (p *Google) openObserved(ctx context.Context, authorization googleAuthorization, endpoint string, body any, observe func(map[string]any)) (*http.Response, error) {
 	request, err := p.newRequest(ctx, authorization, endpoint, body)
 	if err != nil {
 		return nil, err
@@ -325,6 +350,11 @@ func (p *Google) open(ctx context.Context, authorization googleAuthorization, en
 		raw, _ := readInvocationResponseBody(ctx, response, p.label())
 		var decoded map[string]any
 		_ = json.Unmarshal(raw, &decoded)
+		if observe != nil {
+			if exact, err := preparedJSON(core.Request{Body: raw, ContentType: core.ContentTypeJSON}); err == nil {
+				observe(exact)
+			}
+		}
 		return nil, p.statusFailure(response, raw, decoded)
 	}
 	return response, nil

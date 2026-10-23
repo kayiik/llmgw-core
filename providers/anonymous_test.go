@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	"github.com/kayiik/llmgw-core/providers"
@@ -163,16 +162,6 @@ func TestDiscoverAnonymousModelsFailsClosed(t *testing.T) {
 	}, server.Client()); err == nil {
 		t.Fatal("a failing catalog was not reported")
 	}
-}
-
-// redirectTransport sends every request to one test server, keeping its path,
-// so discovery that also reads a fixed metadata URL stays hermetic.
-type redirectTransport struct{ target *url.URL }
-
-func (rt redirectTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	redirected := request.Clone(request.Context())
-	redirected.URL.Scheme, redirected.URL.Host, redirected.Host = rt.target.Scheme, rt.target.Host, rt.target.Host
-	return http.DefaultTransport.RoundTrip(redirected)
 }
 
 func TestDiscoverAnonymousZenUsesVerifiedMetadata(t *testing.T) {

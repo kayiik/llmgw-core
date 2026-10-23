@@ -114,6 +114,11 @@ func codexChatInt(value any) int {
 		return number
 	case int64:
 		return int(number)
+	case json.Number:
+		integer, err := number.Int64()
+		if err == nil && int64(int(integer)) == integer {
+			return int(integer)
+		}
 	}
 	return 0
 }

@@ -66,12 +66,12 @@ func chatToMessages(model string, payload map[string]any, stream bool) (map[stri
 			// Set above, or below with the fields they depend on. A
 			// stream's include_usage is honoured by the stream itself.
 		case "max_tokens":
-			if limit, ok := value.(float64); ok && limit > 0 && payload["max_completion_tokens"] == nil {
-				body["max_tokens"] = limit
+			if positiveMessagesLimit(value) && payload["max_completion_tokens"] == nil {
+				body["max_tokens"] = value
 			}
 		case "max_completion_tokens":
-			if limit, ok := value.(float64); ok && limit > 0 {
-				body["max_tokens"] = limit
+			if positiveMessagesLimit(value) {
+				body["max_tokens"] = value
 				losses = append(losses, core.Loss{Path: field, Class: translate.LossRenamed, Severity: translate.LossAdvisory, Detail: "converted to max_tokens"})
 			}
 		case "temperature":
@@ -130,6 +130,19 @@ func chatToMessages(model string, payload map[string]any, stream bool) (map[stri
 		}
 	}
 	return body, losses, nil
+}
+
+// Prepared requests decode exact JSON numbers; legacy requests use float64.
+func positiveMessagesLimit(value any) bool {
+	switch value := value.(type) {
+	case json.Number:
+		limit, err := value.Int64()
+		return err == nil && limit > 0
+	case float64:
+		return value > 0
+	default:
+		return false
+	}
 }
 
 // messagesTools converts Chat tools to Messages tools. A tool that is not a

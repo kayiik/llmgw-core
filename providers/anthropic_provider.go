@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"mime"
 	"net/http"
 	"net/url"
@@ -281,6 +280,14 @@ func (p *Anthropic) post(ctx context.Context, call anthropicCall, path, label st
 	if err != nil {
 		return nil, &core.ProviderError{Message: "the Anthropic request could not be encoded", Class: core.ProviderErrorInvalidRequest, Cause: err}
 	}
+	return p.postEncoded(ctx, call, path, label, body)
+}
+
+func (p *Anthropic) postEncoded(ctx context.Context, call anthropicCall, path, label string, body []byte) (*http.Response, error) {
+	return p.postEncodedObserved(ctx, call, path, label, body, nil)
+}
+
+func (p *Anthropic) postEncodedObserved(ctx context.Context, call anthropicCall, path, label string, body []byte, observe func([]byte)) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, core.NewConfigurationError("the Anthropic request could not be created", err)
@@ -296,6 +303,9 @@ func (p *Anthropic) post(ctx context.Context, call anthropicCall, path, label st
 	if response.StatusCode >= http.StatusBadRequest {
 		defer response.Body.Close()
 		raw, _ := readInvocationResponseBody(ctx, response, label)
+		if observe != nil {
+			observe(raw)
+		}
 		return nil, httpStatusFailure(label, response, raw, p.now())
 	}
 	return response, nil
@@ -335,7 +345,14 @@ func anthropicProtocolHeaders(header, client http.Header) {
 // is a nonempty object with a content array. The gateway decodes only that
 // value, so anything after it is not returned either.
 func readAnthropicMessage(ctx context.Context, response *http.Response) ([]byte, error) {
+	return readAnthropicMessageObserved(ctx, response, nil)
+}
+
+func readAnthropicMessageObserved(ctx context.Context, response *http.Response, observe func([]byte)) ([]byte, error) {
 	raw, err := readInvocationResponseBody(ctx, response, anthropicLabel)
+	if observe != nil {
+		observe(raw)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -384,137 +401,6 @@ func (s *anthropicStream) Next() ([]byte, error) {
 }
 
 func (s *anthropicStream) Close() error { return s.body.Close() }
-
-// readAnthropicStreamedMessage assembles the message a Messages stream
-// carries: the
-// message_start message, each content block as it stops with its text,
-// thinking, signature and tool input deltas, and message_delta's fields and
-// usage. A stream that is not JSON, reports an error, ends incomplete or
-// continues after message_stop cannot be used.
-func readAnthropicStreamedMessage(ctx context.Context, body io.Reader) ([]byte, error) {
-	reader := newSSERecordReader(body)
-	message := map[string]any{"content": []any{}}
-	blocks := map[int]map[string]any{}
-	inputs := map[int]*strings.Builder{}
-	started, stopped := false, false
-	for {
-		data, err := reader.NextData()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, anthropicStreamReadFailure(ctx, err)
-		}
-		if stopped {
-			return nil, unusableResponse("the anthropic stream continued after message_stop", nil)
-		}
-		var event map[string]any
-		if json.Unmarshal([]byte(data), &event) != nil {
-			return nil, unusableResponse("the anthropic stream sent an event that is not JSON", nil)
-		}
-		number, _ := event["index"].(float64)
-		index := int(number)
-		switch event["type"] {
-		case "message_start":
-			if started {
-				return nil, unusableResponse("the anthropic stream started its message twice", nil)
-			}
-			if start, ok := event["message"].(map[string]any); ok {
-				started = true
-				maps.Copy(message, start)
-				message["content"] = []any{}
-			}
-		case "content_block_start":
-			if block, ok := event["content_block"].(map[string]any); ok {
-				blocks[index] = maps.Clone(block)
-				if block["type"] == "tool_use" {
-					inputs[index] = &strings.Builder{}
-				}
-			}
-		case "content_block_delta":
-			if delta, ok := event["delta"].(map[string]any); ok && blocks[index] != nil {
-				anthropicApplyDelta(blocks[index], delta, inputs[index])
-			}
-		case "content_block_stop":
-			block := blocks[index]
-			if block == nil {
-				continue
-			}
-			if input := inputs[index]; input != nil {
-				var value any = map[string]any{}
-				if input.Len() > 0 && json.Unmarshal([]byte(input.String()), &value) != nil {
-					return nil, unusableResponse("the anthropic stream sent tool input that is not JSON", nil)
-				}
-				block["input"] = value
-			}
-			content, _ := message["content"].([]any)
-			message["content"] = append(content, block)
-			delete(blocks, index)
-			delete(inputs, index)
-		case "message_delta":
-			if delta, ok := event["delta"].(map[string]any); ok {
-				maps.Copy(message, delta)
-			}
-			if usage, ok := event["usage"].(map[string]any); ok {
-				current, _ := message["usage"].(map[string]any)
-				if current == nil {
-					current = map[string]any{}
-				}
-				maps.Copy(current, usage)
-				message["usage"] = current
-			}
-		case "error":
-			failure := "the anthropic stream reported an error"
-			if diagnostic := codexErrorDiagnostic([]byte(data)); diagnostic != "" {
-				failure += " (" + diagnostic + ")"
-			}
-			return nil, unusableResponse(failure, nil)
-		case "message_stop":
-			if !started || len(blocks) != 0 {
-				return nil, unusableResponse("the anthropic stream ended its message incomplete", nil)
-			}
-			stopped = true
-		}
-	}
-	if !started || !stopped || len(blocks) != 0 {
-		return nil, unusableResponse("the anthropic stream ended before its message was complete", nil)
-	}
-	if _, ok := message["content"].([]any); !ok {
-		return nil, unusableResponse("the anthropic stream assembled no content list", nil)
-	}
-	return json.Marshal(message)
-}
-
-// anthropicApplyDelta adds one content_block_delta to its block. Tool input
-// arrives as JSON fragments, joined in input and parsed when the block
-// stops.
-func anthropicApplyDelta(block, delta map[string]any, input *strings.Builder) {
-	text := func(value any) string { s, _ := value.(string); return s }
-	switch delta["type"] {
-	case "text_delta":
-		block["text"] = text(block["text"]) + text(delta["text"])
-	case "thinking_delta":
-		block["thinking"] = text(block["thinking"]) + text(delta["thinking"])
-	case "signature_delta":
-		block["signature"] = text(block["signature"]) + text(delta["signature"])
-	case "input_json_delta":
-		if input != nil {
-			input.WriteString(text(delta["partial_json"]))
-		}
-	}
-}
-
-// anthropicStreamReadFailure reports a stream Invoke could not read to its
-// end. Nothing was delivered, so a stream that broke off is a transport
-// failure another attempt may get past, as the gateway treats it, while an
-// oversized record cannot be used, as an oversized answer cannot.
-func anthropicStreamReadFailure(ctx context.Context, err error) error {
-	var tooLarge *streamRecordTooLargeError
-	if errors.As(err, &tooLarge) {
-		return unusableResponse("the anthropic stream sent a record over the size limit", err)
-	}
-	return transportFailure(ctx, "the anthropic stream broke off", err)
-}
 
 // anthropicTokenCountLabel is the gateway's prefix for token count
 // diagnostics.
