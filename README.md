@@ -26,18 +26,17 @@ go get github.com/kayiik/llmgw-core
 - **llm-provider-auth v0.0.1.** Credentials are stored through its
   `tokenstore` contract, browser sign-in runs on its `browseroauth` package,
   and Google service accounts mint tokens through its `gcp` package.
-- **llm-translate v0.0.2.** Conversions report the vendor fields inside
+- **llm-translate v0.0.3.** Conversions report the vendor fields inside
   messages that the target surface cannot carry, and the translation adapter
   enforces those losses; see [Loss policy](#loss-policy). The Anthropic
   provider has no loss report, so it keeps serving the histories it served
   before, and it carries the `cache_control` of Chat text parts into the
   Messages request, system prompt included.
 
-These are the published module pins declared in `go.mod`. Local integration
-builds use external local module bindings for changes beyond those pins;
-installing the published dependencies alone does not reproduce that source.
-The `realtimews` package and its Gorilla WebSocket dependency are included in
-this source; their presence does not establish availability in a published release.
+The module declares these published dependency versions without local
+replacements. The `realtimews` package uses Gorilla WebSocket and provides
+transport only; its presence does not establish a complete realtime product
+contract.
 
 ## HTTP engine quick start
 

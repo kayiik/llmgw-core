@@ -5,5 +5,5 @@ go 1.26.9
 require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/kayiik/llm-provider-auth v0.0.1
-	github.com/kayiik/llm-translate v0.0.2
+	github.com/kayiik/llm-translate v0.0.3
 )
