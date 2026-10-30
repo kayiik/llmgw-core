@@ -142,6 +142,10 @@ func (a Adapter) PrepareCall(ctx context.Context, request core.Request, options 
 	if err != nil {
 		return nil, &core.ProviderError{Message: "the prepared request cannot be translated", Class: core.ProviderErrorInvalidRequest, Cause: err}
 	}
+	if stream && r.from == core.ModelSurfaceMessages && r.target == core.ModelSurfaceChatCompletions && core.SupportsStreamUsage(a.Provider, request.Model, r.target) {
+		// The translated Messages stream needs the terminal Chat usage chunk.
+		translated["stream_options"] = map[string]any{"include_usage": true}
+	}
 	if baselineMessages {
 		// ResponsesRequestToChat retains this private limit hint for its
 		// caller to bind to the selected upstream protocol. This named path
