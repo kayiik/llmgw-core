@@ -12,6 +12,9 @@ const ModelCapabilitiesSchemaVersion = 1
 // SupportUnknown and marshals as "unknown" rather than false.
 type Support uint8
 
+// SupportState names the same tri-state value for model wire snapshots.
+type SupportState = Support
+
 const (
 	SupportUnknown Support = iota
 	SupportSupported

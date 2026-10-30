@@ -26,6 +26,7 @@ type fakeProvider struct {
 	losses   []core.Loss
 	frames   []string
 	failAt   int // fail the stream after this many frames; zero never fails
+	usage    bool
 	calls    atomic.Int32
 
 	mu       sync.Mutex
@@ -35,6 +36,10 @@ type fakeProvider struct {
 
 func (p *fakeProvider) NativeSurfaces(string) []core.ModelSurface {
 	return []core.ModelSurface{p.native}
+}
+
+func (p *fakeProvider) SupportsStreamUsage(_ string, surface core.ModelSurface) bool {
+	return p.usage && surface == core.ModelSurfaceChatCompletions
 }
 
 func (p *fakeProvider) record(request core.Request) {
@@ -300,7 +305,7 @@ func collect(t *testing.T, stream core.StreamIter) ([]string, error) {
 
 func TestMessagesStreamOverChat(t *testing.T) {
 	t.Parallel()
-	provider := &fakeProvider{native: core.ModelSurfaceChatCompletions, frames: chatStreamFrames()}
+	provider := &fakeProvider{native: core.ModelSurfaceChatCompletions, frames: chatStreamFrames(), usage: true}
 	stream, err := translation.Adapter{Provider: provider}.Stream(context.Background(), jsonRequest(core.ModelSurfaceMessages,
 		`{"model":"m","max_tokens":64,"stream":true,"messages":[{"role":"user","content":"hi"}]}`))
 	if err != nil {
@@ -309,6 +314,8 @@ func TestMessagesStreamOverChat(t *testing.T) {
 	defer stream.Close()
 	if _, body := provider.last(t); body["stream"] != true {
 		t.Fatalf("the upstream request did not stream: %v", body)
+	} else if options, _ := body["stream_options"].(map[string]any); options["include_usage"] != true {
+		t.Fatalf("the Messages stream did not request upstream usage: %v", body)
 	}
 	frames, err := collect(t, stream)
 	if err != nil {

@@ -1,0 +1,19 @@
+{
+  "provenance": "Gateway-observed native JSON responses from connected-local-google-batch-1793165577669; not upstream HTTP capture. Provider requests are reconstructed from the Gateway requests and current adapter contract. Only response IDs and created time are replaced with clearly synthetic values. Credentials and fixture server addresses are synthetic.",
+  "cases": [
+    {
+      "name": "local-messages",
+      "model": "qwen2.5:0.5b",
+      "gateway_request": {"model":"ollama-local-messages/qwen2.5:0.5b","max_tokens":64,"messages":[{"role":"user","content":"Reply with exactly OK."}]},
+      "provider_request": {"model":"qwen2.5:0.5b","max_tokens":64,"messages":[{"role":"user","content":"Reply with exactly OK."}],"stream":false},
+      "response": {"content":[{"text":"OK.","type":"text"}],"id":"msg_synthetic_local_messages","model":"qwen2.5:0.5b","role":"assistant","stop_reason":"end_turn","type":"message","usage":{"cache_read_input_tokens":0,"input_tokens":34,"output_tokens":3}}
+    },
+    {
+      "name": "bedrock-chat",
+      "model": "openai.gpt-oss-20b",
+      "gateway_request": {"model":"bedrock/openai.gpt-oss-20b","messages":[{"role":"user","content":"Reply with exactly OK."}],"max_tokens":128,"stream":false},
+      "provider_request": {"model":"openai.gpt-oss-20b","messages":[{"role":"user","content":"Reply with exactly OK."}],"max_tokens":128,"stream":false},
+      "response": {"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"OK","reasoning":"User wants reply with \"OK\". They want exactly \"OK\". So I should reply with OK.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-synthetic-bedrock-chat","model":"openai.gpt-oss-20b","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":31,"prompt_tokens":72,"total_tokens":103}}
+    }
+  ]
+}

@@ -77,7 +77,7 @@ func TestGoogleAIStudioCatalogSkipsModelsWithNoUsableCapability(t *testing.T) {
 	chat := models[0]
 	if chat.Object != "model" || chat.OwnedBy != "google" || chat.Vendor != "google" || chat.DisplayName != "Gemini 3.5 Flash" ||
 		!reflect.DeepEqual(chat.LegacyCapabilities, map[string]any{"chat": true}) ||
-		!slices.Equal(chat.SupportedAPIs, []string{"/v1/chat/completions", "/v1/messages"}) {
+		!slices.Equal(chat.SupportedAPIs, []string{"/v1/chat/completions"}) {
 		t.Fatalf("chat row = %+v", chat)
 	}
 	// What the gateway's catalog infers when it stores the row.
@@ -189,7 +189,7 @@ func TestGoogleVertexDiscoveryUsesTheV1Beta1CollectionRoute(t *testing.T) {
 			t.Fatalf("base %q: upstream = %+v, want %s", suffix, calls, path)
 		}
 		if ids := googleModelIDs(models); !slices.Equal(ids, []string{"gemini-2.5-flash"}) || models[0].DisplayName != "" ||
-			!slices.Equal(models[0].SupportedAPIs, []string{"/v1/chat/completions", "/v1/messages"}) {
+			!slices.Equal(models[0].SupportedAPIs, []string{"/v1/chat/completions"}) {
 			t.Fatalf("models = %+v, want the bare model id", models)
 		}
 	}

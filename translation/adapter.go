@@ -137,6 +137,10 @@ func (a Adapter) translateRequest(r route, request core.Request, stream bool) (c
 	if err != nil {
 		return core.Request{}, payload, losses, &core.ProviderError{Message: "the request cannot be translated: " + err.Error(), Class: core.ProviderErrorInvalidRequest, Cause: err}
 	}
+	if stream && r.from == core.ModelSurfaceMessages && r.target == core.ModelSurfaceChatCompletions && core.SupportsStreamUsage(a.Provider, request.Model, r.target) {
+		// The translated Messages stream needs the terminal Chat usage chunk.
+		translated["stream_options"] = map[string]any{"include_usage": true}
+	}
 	if err := a.Policy.Check(losses); err != nil {
 		return core.Request{}, payload, losses, err
 	}

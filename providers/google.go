@@ -124,8 +124,9 @@ type Google struct {
 }
 
 var (
-	_ core.Provider       = (*Google)(nil)
-	_ core.ImageGenerator = (*Google)(nil)
+	_ core.Provider            = (*Google)(nil)
+	_ core.ImageGenerator      = (*Google)(nil)
+	_ core.StreamUsageProvider = (*Google)(nil)
 )
 
 // NewGoogle returns a Google provider for one deployment.
@@ -182,6 +183,10 @@ func NewGoogle(config GoogleConfig) (*Google, error) {
 // NativeSurfaces reports Chat Completions and embeddings for every model.
 func (p *Google) NativeSurfaces(string) []core.ModelSurface {
 	return []core.ModelSurface{core.ModelSurfaceChatCompletions, core.ModelSurfaceEmbeddings}
+}
+
+func (*Google) SupportsStreamUsage(_ string, surface core.ModelSurface) bool {
+	return surface == core.ModelSurfaceChatCompletions
 }
 
 // Invoke performs one Chat Completions or embeddings request.

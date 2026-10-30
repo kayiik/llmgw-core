@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"maps"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,6 +73,9 @@ type ConditionalCatalogStore interface {
 func cloneCatalogEvidence(evidence CatalogEvidence) CatalogEvidence {
 	if evidence.Models != nil {
 		evidence.Models = append([]ModelInfo(nil), evidence.Models...)
+		for index := range evidence.Models {
+			evidence.Models[index].WirePreservation = maps.Clone(evidence.Models[index].WirePreservation)
+		}
 	}
 	return evidence
 }

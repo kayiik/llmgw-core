@@ -121,7 +121,7 @@ func TestAzureCatalogListsOnlyChatCallableDeployments(t *testing.T) {
 	row := func(id, display string) core.ModelInfo {
 		model := core.ModelInfo{
 			ID: id, Object: "model", OwnedBy: "azure-openai", Vendor: "azure-openai", DisplayName: display,
-			LegacyCapabilities: map[string]any{"chat": true}, SupportedAPIs: []string{"/v1/chat/completions", "/v1/messages"},
+			LegacyCapabilities: map[string]any{"chat": true}, SupportedAPIs: []string{"/v1/chat/completions"},
 		}
 		model.Capabilities = core.AdaptModelCapabilities(model.LegacyCapabilities, model.SupportedAPIs, discoveredAt, time.Time{})
 		return model
@@ -130,7 +130,7 @@ func TestAzureCatalogListsOnlyChatCallableDeployments(t *testing.T) {
 		t.Fatalf("models = %+v", models)
 	}
 	if capabilities := models[0].Capabilities; capabilities.Operations.Chat != core.SupportSupported ||
-		capabilities.Surfaces.ChatCompletions != core.SupportSupported || capabilities.Surfaces.Messages != core.SupportSupported {
+		capabilities.Surfaces.ChatCompletions != core.SupportSupported || capabilities.Surfaces.Messages != core.SupportUnknown {
 		t.Fatalf("capabilities = %+v", capabilities)
 	}
 }

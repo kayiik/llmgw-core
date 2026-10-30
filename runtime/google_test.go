@@ -299,8 +299,8 @@ func TestRuntimeServesTheGoogleVertical(t *testing.T) {
 		}
 		models := record.Evidence.Models
 		if record.Evidence.Status != core.CatalogDiscovered || len(models) != 2 || models[0].ID != "gemini-fixture" || models[0].DisplayName != "Gemini Fixture" ||
-			models[0].Vendor != "google" || !slices.Equal(models[0].SupportedAPIs, []string{"/v1/chat/completions", "/v1/messages"}) ||
-			models[0].Capabilities.Surfaces.ChatCompletions != core.SupportSupported || models[0].Capabilities.Surfaces.Messages != core.SupportSupported ||
+			models[0].Vendor != "google" || !slices.Equal(models[0].SupportedAPIs, []string{"/v1/chat/completions"}) ||
+			models[0].Capabilities.Surfaces.ChatCompletions != core.SupportSupported || models[0].Capabilities.Surfaces.Messages != core.SupportUnknown ||
 			models[1].ID != "gemini-embedding-fixture" || models[1].Capabilities.Operations.Embeddings != core.SupportSupported {
 			t.Fatalf("AI Studio catalog = %+v", record)
 		}
