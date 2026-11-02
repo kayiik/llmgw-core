@@ -322,6 +322,8 @@ func parseAIStudioModels(decoded map[string]any) []core.ModelInfo {
 // googleCapabilities maps Google's supportedGenerationMethods onto the
 // gateway's capability vocabulary. Image models advertise the same
 // generateContent method as text models, so their name identifies them.
+// Chat rows list the provider's Chat endpoint; Messages needs a separate
+// translation adapter and is not evidence from Google metadata.
 func googleCapabilities(id string, methods []string) (map[string]any, []string) {
 	capabilities := map[string]any{}
 	surfaces := []string{}
@@ -343,7 +345,7 @@ func googleCapabilities(id string, methods []string) (map[string]any, []string) 
 		surfaces = append(surfaces, "/v1/images/generations")
 	case has("generateContent"):
 		capabilities["chat"] = true
-		surfaces = append(surfaces, "/v1/chat/completions", "/v1/messages")
+		surfaces = append(surfaces, "/v1/chat/completions")
 	case has("embedContent"):
 		capabilities["embedding"] = true
 	}
@@ -407,7 +409,7 @@ func vertexModelCapability(id string) (map[string]any, []string) {
 		return map[string]any{"image": true}, []string{"/v1/images/generations"}
 	case strings.Contains(lower, "gemini") || strings.Contains(lower, "bison") ||
 		strings.Contains(lower, "chat") || strings.Contains(lower, "codey"):
-		return map[string]any{"chat": true}, []string{"/v1/chat/completions", "/v1/messages"}
+		return map[string]any{"chat": true}, []string{"/v1/chat/completions"}
 	}
 	return nil, nil
 }

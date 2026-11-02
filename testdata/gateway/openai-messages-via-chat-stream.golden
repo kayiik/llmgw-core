@@ -5,7 +5,7 @@ header Cache-Control: no-cache
 header Connection: keep-alive
 header Content-Type: text/event-stream
 upstream: POST /f/chat/completions
-upstream body: {"max_tokens":64,"messages":[{"content":"Say hello","role":"user"}],"model":"chat-model","stream":true}
+upstream body: {"max_tokens":64,"messages":[{"content":"Say hello","role":"user"}],"model":"chat-model","stream":true,"stream_options":{"include_usage":true}}
 body:
 event: message_start
 data: {"message":{"content":[],"id":"<generated msg_>","model":"chat-model","role":"assistant","stop_reason":null,"stop_sequence":null,"type":"message","usage":{"input_tokens":0,"output_tokens":0}},"type":"message_start"}

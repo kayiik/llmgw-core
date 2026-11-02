@@ -73,7 +73,14 @@ type AzureOpenAI struct {
 	now                   func() time.Time
 }
 
-var _ core.Provider = (*AzureOpenAI)(nil)
+var (
+	_ core.Provider            = (*AzureOpenAI)(nil)
+	_ core.StreamUsageProvider = (*AzureOpenAI)(nil)
+)
+
+func (*AzureOpenAI) SupportsStreamUsage(_ string, surface core.ModelSurface) bool {
+	return surface == core.ModelSurfaceChatCompletions
+}
 
 // NewAzureOpenAI returns an Azure OpenAI provider. A base URL that is not a
 // resource endpoint is refused, as the gateway refuses it at configuration;

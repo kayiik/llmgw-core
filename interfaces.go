@@ -213,6 +213,12 @@ type ModelInfo struct {
 	// catalog reported it. InferCapabilities reads it. Copies of a row share
 	// the map, so copy it before changing it.
 	LegacyCapabilities map[string]any `json:"legacy_capabilities,omitempty"`
+	// WirePreservation is the daemon's exact credential/model-scoped snapshot
+	// of wire preservation, not endpoint support or an execution guarantee.
+	// A nil map, missing entry or SupportUnknown leaves preservation unknown;
+	// SupportUnsupported is an explicit declaration, distinct from absence.
+	// Copies of a row share the map, so clone it before changing it.
+	WirePreservation map[ModelSurface]SupportState `json:"wire_preservation,omitempty"`
 }
 
 // GenerateImagesRequest is the storage-neutral input for image synthesis.

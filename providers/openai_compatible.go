@@ -106,9 +106,14 @@ type OpenAICompatible struct {
 }
 
 var (
-	_ core.Provider      = (*OpenAICompatible)(nil)
-	_ core.WirePreserver = (*OpenAICompatible)(nil)
+	_ core.Provider            = (*OpenAICompatible)(nil)
+	_ core.StreamUsageProvider = (*OpenAICompatible)(nil)
+	_ core.WirePreserver       = (*OpenAICompatible)(nil)
 )
+
+func (*OpenAICompatible) SupportsStreamUsage(_ string, surface core.ModelSurface) bool {
+	return surface == core.ModelSurfaceChatCompletions
+}
 
 // NewOpenAICompatible returns an OpenAICompatible provider.
 func NewOpenAICompatible(config OpenAICompatibleConfig) (*OpenAICompatible, error) {

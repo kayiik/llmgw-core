@@ -264,6 +264,48 @@ func TestPreparedAdapterKeepsUnknownCustomAPIUnknown(t *testing.T) {
 	}
 }
 
+func TestPreparedMessagesStreamOverOpenAICompatibleRequestsTerminalUsage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("path = %s, want /chat/completions", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		options, _ := body["stream_options"].(map[string]any)
+		if options["include_usage"] != true {
+			t.Fatalf("stream_options = %v, want include_usage", body["stream_options"])
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "data: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hello\"}}]}\n\ndata: {\"id\":\"c1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4,\"total_tokens\":7}}\n\ndata: [DONE]\n\n")
+	}))
+	defer server.Close()
+	provider, err := providers.NewOpenAICompatible(providers.OpenAICompatibleConfig{BaseURL: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := jsonRequest(core.ModelSurfaceMessages, `{"model":"m","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	call, err := core.PrepareCall(t.Context(), translation.Adapter{Provider: provider}, request, core.CallPreparationOptions{Mode: core.CallModeStream, AllowAdaptation: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := call.Stream(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	for {
+		_, err := stream.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestPreparedAdapterStreamDoesNotCompleteAfterOpaqueStateLoss(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -159,7 +159,9 @@ func TestRuntimeServesTheAzureOpenAIVertical(t *testing.T) {
 				t.Fatalf("frames lack %q: %q", event, frames.String())
 			}
 		}
-		if calls := backend.take(); !reflect.DeepEqual(calls, []azureRuntimeCall{chat(true)}) {
+		expected := chat(true)
+		expected.body = `{"max_tokens":64,"messages":[{"content":"Say hello","role":"user"}],"model":"chat-model","stream":true,"stream_options":{"include_usage":true}}`
+		if calls := backend.take(); !reflect.DeepEqual(calls, []azureRuntimeCall{expected}) {
 			t.Fatalf("upstream = %+v", calls)
 		}
 	})
@@ -192,8 +194,9 @@ func TestRuntimeServesTheAzureOpenAIVertical(t *testing.T) {
 		record, err := runtime.ListModels(ctx, owner, "azure")
 		models := record.Evidence.Models
 		if err != nil || len(models) != 1 || models[0].ID != "chat-model" || models[0].DisplayName != "gpt-4o" ||
-			!reflect.DeepEqual(models[0].SupportedAPIs, []string{"/v1/chat/completions", "/v1/messages"}) ||
-			models[0].Capabilities == nil || models[0].Capabilities.Surfaces.ChatCompletions != core.SupportSupported {
+			!reflect.DeepEqual(models[0].SupportedAPIs, []string{"/v1/chat/completions"}) ||
+			models[0].Capabilities == nil || models[0].Capabilities.Surfaces.ChatCompletions != core.SupportSupported ||
+			models[0].Capabilities.Surfaces.Messages != core.SupportUnknown {
 			t.Fatalf("catalog = %+v, err = %v", record, err)
 		}
 		want := azureRuntimeCall{method: http.MethodGet, path: "/openai/deployments", query: "api-version=2023-03-15-preview", apiKey: "fixture-azure-key"}

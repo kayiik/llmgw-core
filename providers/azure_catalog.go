@@ -192,7 +192,8 @@ func azureSameOriginPage(origin, current, next string) (string, bool) {
 //
 // A row declares chat rather than leaving it to convention, because a row
 // that declares no modality reads as a chat model downstream. Its
-// capabilities are what the gateway infers when it stores the row.
+// capabilities are inferred from its direct Chat endpoint. Messages requires
+// a translation adapter and is not a direct provider catalog claim.
 func azureDeploymentRows(page map[string]any, discoveredAt time.Time) []core.ModelInfo {
 	items, _ := page["data"].([]any)
 	models := make([]core.ModelInfo, 0, len(items))
@@ -218,7 +219,7 @@ func azureDeploymentRows(page map[string]any, discoveredAt time.Time) []core.Mod
 		model := core.ModelInfo{
 			ID: id, Object: "model", OwnedBy: "azure-openai", Vendor: "azure-openai",
 			LegacyCapabilities: map[string]any{"chat": true},
-			SupportedAPIs:      []string{"/v1/chat/completions", "/v1/messages"},
+			SupportedAPIs:      []string{"/v1/chat/completions"},
 		}
 		if base != "" && base != id {
 			model.DisplayName = base
